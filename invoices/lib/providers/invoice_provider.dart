@@ -14,7 +14,6 @@ class InvoiceProvider extends ChangeNotifier {
   String? _userId;
   StreamSubscription<List<Invoice>>? _sub;
 
-  // Draft state for invoice being created
   Invoice? _draft;
 
   List<Invoice> get invoices => _invoices;
@@ -54,9 +53,7 @@ class InvoiceProvider extends ChangeNotifier {
       id: '',
       invoiceNumber: '',
       issueDate: now,
-      dueDate: now.add(const Duration(days: 30)),
-      clientName: '',
-      clientEmail: '',
+      clientNaam: '',
       businessName: business.name,
       businessEmail: business.email,
       businessPhone: business.phone,
@@ -65,12 +62,10 @@ class InvoiceProvider extends ChangeNotifier {
       businessState: business.state,
       businessZip: business.zip,
       businessCountry: business.country,
-      businessLogoUrl: business.logoUrl,
       businessWebsite: business.website,
       items: const [],
       notes: business.defaultNotes ?? '',
-      terms: business.defaultPaymentTerms,
-      template: 'modern',
+      template: 'classic',
       taxRate: business.defaultTaxRate,
       currency: business.currency,
       createdAt: now,
@@ -79,34 +74,22 @@ class InvoiceProvider extends ChangeNotifier {
   }
 
   void updateDraftClient({
-    String? name,
-    String? company,
-    String? email,
-    String? phone,
-    String? address,
-    String? city,
-    String? state,
-    String? zip,
-    String? country,
+    String? naam,
+    String? kenteken,
+    String? kmstand,
+    String? datum,
+    String? adres,
+    String? telefoonnummer,
   }) {
     if (_draft == null) return;
     _draft = _draft!.copyWith(
-      clientName: name,
-      clientCompany: company,
-      clientEmail: email,
-      clientPhone: phone,
-      clientAddress: address,
-      clientCity: city,
-      clientState: state,
-      clientZip: zip,
-      clientCountry: country,
+      clientNaam: naam,
+      clientKenteken: kenteken,
+      clientKmstand: kmstand,
+      clientDatum: datum,
+      clientAdres: adres,
+      clientTelefoonnummer: telefoonnummer,
     );
-    notifyListeners();
-  }
-
-  void updateDraftTemplate(String template) {
-    if (_draft == null) return;
-    _draft = _draft!.copyWith(template: template);
     notifyListeners();
   }
 
@@ -132,62 +115,50 @@ class InvoiceProvider extends ChangeNotifier {
 
   void updateDraftDetails({
     String? notes,
-    String? terms,
     double? taxRate,
     DateTime? issueDate,
-    DateTime? dueDate,
     String? currency,
   }) {
     if (_draft == null) return;
     _draft = _draft!.copyWith(
       notes: notes,
-      terms: terms,
       taxRate: taxRate,
       issueDate: issueDate,
-      dueDate: dueDate,
       currency: currency,
     );
     notifyListeners();
   }
 
   InvoiceItem createItem({
-    String? name,
-    String? description,
-    double quantity = 1,
-    double unitPrice = 0,
-    String unit = 'item',
+    String? omschrijving,
+    double aantal = 1,
+    double prijsExBtw = 0,
     String? productId,
   }) =>
       InvoiceItem(
         id: _uuid.v4(),
-        name: name ?? '',
-        description: description ?? '',
-        quantity: quantity,
-        unitPrice: unitPrice,
-        unit: unit,
+        omschrijving: omschrijving ?? '',
+        aantal: aantal,
+        prijsExBtw: prijsExBtw,
         productId: productId,
       );
 
   Future<Invoice> saveDraft() async {
-    if (_userId == null || _draft == null) throw Exception('No draft or user');
+    if (_userId == null || _draft == null) throw Exception('Geen concept of gebruiker');
 
     final invoiceNumber = await _firestore.incrementAndGetInvoiceNumber(_userId!);
-    final formattedNumber = 'INV-${invoiceNumber.toString().padLeft(4, '0')}';
+    final formattedNumber = 'F-${invoiceNumber.toString().padLeft(4, '0')}';
 
     final invoice = Invoice(
       id: '',
       invoiceNumber: formattedNumber,
       issueDate: _draft!.issueDate,
-      dueDate: _draft!.dueDate,
-      clientName: _draft!.clientName,
-      clientCompany: _draft!.clientCompany,
-      clientEmail: _draft!.clientEmail,
-      clientPhone: _draft!.clientPhone,
-      clientAddress: _draft!.clientAddress,
-      clientCity: _draft!.clientCity,
-      clientState: _draft!.clientState,
-      clientZip: _draft!.clientZip,
-      clientCountry: _draft!.clientCountry,
+      clientNaam: _draft!.clientNaam,
+      clientKenteken: _draft!.clientKenteken,
+      clientKmstand: _draft!.clientKmstand,
+      clientDatum: _draft!.clientDatum,
+      clientAdres: _draft!.clientAdres,
+      clientTelefoonnummer: _draft!.clientTelefoonnummer,
       businessName: _draft!.businessName,
       businessEmail: _draft!.businessEmail,
       businessPhone: _draft!.businessPhone,
@@ -196,33 +167,27 @@ class InvoiceProvider extends ChangeNotifier {
       businessState: _draft!.businessState,
       businessZip: _draft!.businessZip,
       businessCountry: _draft!.businessCountry,
-      businessLogoUrl: _draft!.businessLogoUrl,
       businessWebsite: _draft!.businessWebsite,
       items: _draft!.items,
       notes: _draft!.notes,
-      terms: _draft!.terms,
-      template: _draft!.template,
-      status: 'draft',
+      template: 'classic',
+      status: 'concept',
       taxRate: _draft!.taxRate,
       currency: _draft!.currency,
       createdAt: DateTime.now(),
     );
 
     final savedId = await _firestore.saveInvoice(_userId!, invoice);
-    final savedInvoice = Invoice(
+    final saved = Invoice(
       id: savedId,
       invoiceNumber: invoice.invoiceNumber,
       issueDate: invoice.issueDate,
-      dueDate: invoice.dueDate,
-      clientName: invoice.clientName,
-      clientCompany: invoice.clientCompany,
-      clientEmail: invoice.clientEmail,
-      clientPhone: invoice.clientPhone,
-      clientAddress: invoice.clientAddress,
-      clientCity: invoice.clientCity,
-      clientState: invoice.clientState,
-      clientZip: invoice.clientZip,
-      clientCountry: invoice.clientCountry,
+      clientNaam: invoice.clientNaam,
+      clientKenteken: invoice.clientKenteken,
+      clientKmstand: invoice.clientKmstand,
+      clientDatum: invoice.clientDatum,
+      clientAdres: invoice.clientAdres,
+      clientTelefoonnummer: invoice.clientTelefoonnummer,
       businessName: invoice.businessName,
       businessEmail: invoice.businessEmail,
       businessPhone: invoice.businessPhone,
@@ -231,11 +196,9 @@ class InvoiceProvider extends ChangeNotifier {
       businessState: invoice.businessState,
       businessZip: invoice.businessZip,
       businessCountry: invoice.businessCountry,
-      businessLogoUrl: invoice.businessLogoUrl,
       businessWebsite: invoice.businessWebsite,
       items: invoice.items,
       notes: invoice.notes,
-      terms: invoice.terms,
       template: invoice.template,
       status: invoice.status,
       taxRate: invoice.taxRate,
@@ -245,7 +208,7 @@ class InvoiceProvider extends ChangeNotifier {
 
     _draft = null;
     notifyListeners();
-    return savedInvoice;
+    return saved;
   }
 
   void clearDraft() {

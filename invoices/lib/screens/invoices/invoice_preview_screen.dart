@@ -1,8 +1,10 @@
+import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:printing/printing.dart';
 import 'package:provider/provider.dart';
 import '../../config/theme.dart';
 import '../../models/invoice.dart';
+import '../../providers/business_provider.dart';
 import '../../providers/invoice_provider.dart';
 import '../../services/pdf_service.dart';
 import '../email/email_editor_screen.dart';
@@ -26,43 +28,39 @@ class _InvoicePreviewScreenState extends State<InvoicePreviewScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final logoBytes = context.read<BusinessProvider>().logoBytes;
+
     return Scaffold(
       appBar: AppBar(
         title: Text(_invoice.invoiceNumber),
         actions: [
           PopupMenuButton<String>(
             icon: const Icon(Icons.more_vert),
-            onSelected: (v) => _handleMenu(v),
+            onSelected: _handleMenu,
             itemBuilder: (_) => [
-              if (_invoice.status != 'paid')
+              if (_invoice.status != 'betaald')
                 const PopupMenuItem(
-                    value: 'paid', child: Text('Mark as Paid')),
-              if (_invoice.status == 'paid')
+                    value: 'betaald', child: Text('Markeer als betaald')),
+              if (_invoice.status == 'betaald')
                 const PopupMenuItem(
-                    value: 'sent', child: Text('Mark as Sent')),
-              const PopupMenuItem(value: 'delete', child: Text('Delete')),
+                    value: 'verzonden', child: Text('Markeer als verzonden')),
+              const PopupMenuItem(
+                  value: 'delete', child: Text('Verwijderen')),
             ],
           ),
         ],
       ),
       body: Column(
         children: [
-          // Invoice meta bar
+          // Meta bar
           Container(
-            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
             color: Colors.white,
+            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
             child: Row(
               children: [
                 _MetaChip(
-                  label: _invoice.clientName,
-                  icon: Icons.person_outline,
-                ),
-                const SizedBox(width: 8),
-                _MetaChip(
-                  label: _totalLabel(),
-                  icon: Icons.attach_money,
-                  color: AppTheme.primary,
-                ),
+                    label: '${_invoice.clientNaam} · ${_invoice.clientKenteken}',
+                    icon: Icons.directions_car_outlined),
                 const Spacer(),
                 _StatusBadge(status: _invoice.status),
               ],
@@ -70,19 +68,42 @@ class _InvoicePreviewScreenState extends State<InvoicePreviewScreen> {
           ),
           const Divider(height: 1),
 
+          // Notes bar — no "Notes:" label, just the text
+          Container(
+            width: double.infinity,
+            color: AppTheme.background,
+            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+            child: Text(
+              _invoice.notes.isNotEmpty
+                  ? _invoice.notes
+                  : 'Geen opmerkingen toegevoegd',
+              style: TextStyle(
+                color: _invoice.notes.isNotEmpty
+                    ? AppTheme.textPrimary
+                    : AppTheme.textSecondary,
+                fontSize: 13,
+                fontStyle: _invoice.notes.isEmpty
+                    ? FontStyle.italic
+                    : FontStyle.normal,
+              ),
+            ),
+          ),
+          const Divider(height: 1),
+
           // PDF Preview
           Expanded(
             child: PdfPreview(
-              build: (_) => PdfService.generatePdf(_invoice),
+              build: (_) => PdfService.generatePdf(_invoice, logoBytes: logoBytes),
               canChangeOrientation: false,
               canDebug: false,
-              pdfFileName: 'invoice_${_invoice.invoiceNumber}.pdf',
+              pdfFileName: _invoice.pdfFilename,
               actions: const [],
-              loadingWidget: const Center(child: CircularProgressIndicator()),
+              loadingWidget:
+                  const Center(child: CircularProgressIndicator()),
             ),
           ),
 
-          // Action buttons
+          // Actions
           Container(
             padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
             decoration: const BoxDecoration(
@@ -93,17 +114,22 @@ class _InvoicePreviewScreenState extends State<InvoicePreviewScreen> {
               children: [
                 Expanded(
                   child: OutlinedButton.icon(
-                    onPressed: _downloadPdf,
+                    onPressed: () => _downloadPdf(logoBytes),
                     icon: const Icon(Icons.download_outlined, size: 18),
-                    label: const Text('Download PDF'),
+                    label: const Text('PDF downloaden'),
                   ),
                 ),
                 const SizedBox(width: 12),
                 Expanded(
                   child: ElevatedButton.icon(
-                    onPressed: _sendEmail,
+                    onPressed: () => Navigator.of(context).push(
+                      MaterialPageRoute(
+                        builder: (_) =>
+                            EmailEditorScreen(invoice: _invoice),
+                      ),
+                    ),
                     icon: const Icon(Icons.send_outlined, size: 18),
-                    label: const Text('Send Email'),
+                    label: const Text('Verstuur factuur'),
                   ),
                 ),
               ],
@@ -114,41 +140,28 @@ class _InvoicePreviewScreenState extends State<InvoicePreviewScreen> {
     );
   }
 
-  String _totalLabel() =>
-      '${_invoice.currency}${_invoice.total.toStringAsFixed(2)}';
-
-  Future<void> _downloadPdf() async {
-    final bytes = await PdfService.generatePdf(_invoice);
-    await Printing.sharePdf(
-      bytes: bytes,
-      filename: 'invoice_${_invoice.invoiceNumber}.pdf',
-    );
+  Future<void> _downloadPdf(Uint8List? logoBytes) async {
+    final bytes = await PdfService.generatePdf(_invoice, logoBytes: logoBytes);
+    await Printing.sharePdf(bytes: bytes, filename: _invoice.pdfFilename);
   }
 
-  void _sendEmail() {
-    Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (_) => EmailEditorScreen(invoice: _invoice),
-      ),
-    );
-  }
-
-  void _handleMenu(String action) async {
+  Future<void> _handleMenu(String action) async {
     if (action == 'delete') {
       final confirm = await showDialog<bool>(
         context: context,
         builder: (ctx) => AlertDialog(
-          title: const Text('Delete Invoice'),
-          content: Text('Delete ${_invoice.invoiceNumber}? This cannot be undone.'),
+          title: const Text('Factuur verwijderen'),
+          content: Text(
+              'Verwijder ${_invoice.invoiceNumber}? Dit kan niet ongedaan worden gemaakt.'),
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(ctx, false),
-              child: const Text('Cancel'),
+              child: const Text('Annuleren'),
             ),
             TextButton(
               onPressed: () => Navigator.pop(ctx, true),
               style: TextButton.styleFrom(foregroundColor: AppTheme.error),
-              child: const Text('Delete'),
+              child: const Text('Verwijderen'),
             ),
           ],
         ),
@@ -161,9 +174,10 @@ class _InvoicePreviewScreenState extends State<InvoicePreviewScreen> {
       await context.read<InvoiceProvider>().updateStatus(_invoice.id, action);
       setState(() => _invoice = _invoice.copyWith(status: action));
       if (mounted) {
+        final label = action == 'betaald' ? 'betaald' : 'verzonden';
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Invoice marked as $action'),
+            content: Text('Factuur gemarkeerd als $label'),
             behavior: SnackBarBehavior.floating,
           ),
         );
@@ -175,29 +189,21 @@ class _InvoicePreviewScreenState extends State<InvoicePreviewScreen> {
 class _MetaChip extends StatelessWidget {
   final String label;
   final IconData icon;
-  final Color color;
-
-  const _MetaChip({
-    required this.label,
-    required this.icon,
-    this.color = AppTheme.textSecondary,
-  });
+  const _MetaChip({required this.label, required this.icon});
 
   @override
-  Widget build(BuildContext context) {
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Icon(icon, size: 14, color: color),
-        const SizedBox(width: 4),
-        Text(label,
-            style: TextStyle(
-                fontSize: 13,
-                color: color,
-                fontWeight: FontWeight.w500)),
-      ],
-    );
-  }
+  Widget build(BuildContext context) => Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 14, color: AppTheme.textSecondary),
+          const SizedBox(width: 4),
+          Text(label,
+              style: const TextStyle(
+                  fontSize: 13,
+                  color: AppTheme.textSecondary,
+                  fontWeight: FontWeight.w500)),
+        ],
+      );
 }
 
 class _StatusBadge extends StatelessWidget {
@@ -208,10 +214,10 @@ class _StatusBadge extends StatelessWidget {
   Widget build(BuildContext context) {
     Color color;
     switch (status) {
-      case 'paid':
+      case 'betaald':
         color = const Color(0xFF10B981);
         break;
-      case 'sent':
+      case 'verzonden':
         color = AppTheme.primary;
         break;
       default:

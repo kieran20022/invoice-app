@@ -18,7 +18,6 @@ class LoginScreen extends StatelessWidget {
           child: Column(
             children: [
               const Spacer(flex: 2),
-              // Logo / Brand
               Container(
                 width: 80,
                 height: 80,
@@ -30,7 +29,7 @@ class LoginScreen extends StatelessWidget {
               ),
               const SizedBox(height: 24),
               const Text(
-                'InvoiceApp',
+                'Facturatie App',
                 style: TextStyle(
                   fontSize: 32,
                   fontWeight: FontWeight.w800,
@@ -40,18 +39,15 @@ class LoginScreen extends StatelessWidget {
               ),
               const SizedBox(height: 8),
               const Text(
-                'Create professional invoices in minutes',
+                'Maak professionele facturen in enkele minuten',
                 textAlign: TextAlign.center,
                 style: TextStyle(fontSize: 16, color: AppTheme.textSecondary),
               ),
-
               const Spacer(flex: 2),
-
-              // Feature bullets
               ...[
-                ('receipt_long', 'Create & manage invoices'),
-                ('picture_as_pdf', 'Download as PDF'),
-                ('email', 'Send directly to clients'),
+                (Icons.receipt_long, 'Facturen aanmaken en beheren'),
+                (Icons.picture_as_pdf, 'Downloaden als PDF'),
+                (Icons.email, 'Direct naar klanten versturen'),
               ].map(
                 (f) => Padding(
                   padding: const EdgeInsets.only(bottom: 12),
@@ -64,25 +60,17 @@ class LoginScreen extends StatelessWidget {
                           color: AppTheme.primary.withAlpha(26),
                           borderRadius: BorderRadius.circular(8),
                         ),
-                        child: Icon(
-                          _iconFromString(f.$1),
-                          color: AppTheme.primary,
-                          size: 18,
-                        ),
+                        child: Icon(f.$1, color: AppTheme.primary, size: 18),
                       ),
                       const SizedBox(width: 12),
-                      Text(
-                        f.$2,
-                        style: const TextStyle(
-                            fontSize: 15, color: AppTheme.textPrimary),
-                      ),
+                      Text(f.$2,
+                          style: const TextStyle(
+                              fontSize: 15, color: AppTheme.textPrimary)),
                     ],
                   ),
                 ),
               ),
-
               const Spacer(flex: 3),
-
               if (auth.error != null)
                 Padding(
                   padding: const EdgeInsets.only(bottom: 12),
@@ -92,8 +80,6 @@ class LoginScreen extends StatelessWidget {
                     textAlign: TextAlign.center,
                   ),
                 ),
-
-              // Google Sign In button
               SizedBox(
                 width: double.infinity,
                 height: 52,
@@ -105,7 +91,9 @@ class LoginScreen extends StatelessWidget {
                     backgroundColor: Colors.white,
                     foregroundColor: AppTheme.textPrimary,
                   ),
-                  onPressed: auth.isLoading ? null : () => context.read<AuthProvider>().signInWithGoogle(),
+                  onPressed: auth.isLoading
+                      ? null
+                      : () => context.read<AuthProvider>().signInWithGoogle(),
                   child: auth.isLoading
                       ? const SizedBox(
                           width: 20,
@@ -124,20 +112,17 @@ class LoginScreen extends StatelessWidget {
                             ),
                             const SizedBox(width: 12),
                             const Text(
-                              'Continue with Google',
+                              'Inloggen met Google',
                               style: TextStyle(
-                                fontSize: 16,
-                                fontWeight: FontWeight.w600,
-                              ),
+                                  fontSize: 16, fontWeight: FontWeight.w600),
                             ),
                           ],
                         ),
                 ),
               ),
-
               const SizedBox(height: 24),
               const Text(
-                'By continuing, you agree to our Terms of Service\nand Privacy Policy',
+                'Door verder te gaan ga je akkoord met onze\nServicevoorwaarden en Privacybeleid',
                 textAlign: TextAlign.center,
                 style: TextStyle(fontSize: 12, color: AppTheme.textSecondary),
               ),
@@ -147,18 +132,5 @@ class LoginScreen extends StatelessWidget {
         ),
       ),
     );
-  }
-
-  IconData _iconFromString(String name) {
-    switch (name) {
-      case 'receipt_long':
-        return Icons.receipt_long;
-      case 'picture_as_pdf':
-        return Icons.picture_as_pdf;
-      case 'email':
-        return Icons.email;
-      default:
-        return Icons.check;
-    }
   }
 }

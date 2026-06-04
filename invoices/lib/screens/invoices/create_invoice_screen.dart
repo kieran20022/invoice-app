@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 import '../../config/theme.dart';
+import '../../models/business_info.dart';
 import '../../models/invoice.dart';
 import '../../models/product.dart';
 import '../../providers/business_provider.dart';
@@ -18,202 +20,227 @@ class CreateInvoiceScreen extends StatefulWidget {
 class _CreateInvoiceScreenState extends State<CreateInvoiceScreen> {
   int _step = 0;
   final _clientFormKey = GlobalKey<FormState>();
-  final _detailsFormKey = GlobalKey<FormState>();
+  bool _saving = false;
+  bool _initialized = false;
 
   // Client fields
-  final _clientName = TextEditingController();
-  final _clientCompany = TextEditingController();
-  final _clientEmail = TextEditingController();
-  final _clientPhone = TextEditingController();
-  final _clientAddress = TextEditingController();
-  final _clientCity = TextEditingController();
-  final _clientState = TextEditingController();
-  final _clientZip = TextEditingController();
-  final _clientCountry = TextEditingController();
+  final _naam = TextEditingController();
+  final _kenteken = TextEditingController();
+  final _kmstand = TextEditingController();
+  final _datumCtrl = TextEditingController();
+  final _adres = TextEditingController();
+  final _telefoonnummer = TextEditingController();
+  DateTime _datum = DateTime.now();
 
   // Details fields
   final _notes = TextEditingController();
-  final _terms = TextEditingController();
   final _taxRate = TextEditingController();
   final _currency = TextEditingController();
-  DateTime _issueDate = DateTime.now();
-  DateTime _dueDate = DateTime.now().add(const Duration(days: 30));
 
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      final business = context.read<BusinessProvider>().businessInfo;
-      if (business != null) {
-        context.read<InvoiceProvider>().startNewDraft(business);
-        _notes.text = business.defaultNotes ?? '';
-        _terms.text = business.defaultPaymentTerms;
-        _taxRate.text = business.defaultTaxRate.toString();
-        _currency.text = business.currency;
-      }
-    });
+    _datumCtrl.text = DateFormat('dd-MM-yyyy').format(_datum);
+    _taxRate.text = '21';
+    _currency.text = '€';
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (_initialized) return;
+    _initialized = true;
+
+    final business = context.read<BusinessProvider>().businessInfo;
+    if (business != null) {
+      context.read<InvoiceProvider>().startNewDraft(business);
+      _notes.text = business.defaultNotes ?? '';
+      _taxRate.text = business.defaultTaxRate.toString();
+      _currency.text = business.currency;
+    } else {
+      context.read<InvoiceProvider>().startNewDraft(
+        BusinessInfo(id: '', name: '', email: ''),
+      );
+      _taxRate.text = '21';
+      _currency.text = '€';
+    }
   }
 
   @override
   void dispose() {
     for (final c in [
-      _clientName, _clientCompany, _clientEmail, _clientPhone,
-      _clientAddress, _clientCity, _clientState, _clientZip, _clientCountry,
-      _notes, _terms, _taxRate, _currency,
+      _naam,
+      _kenteken,
+      _kmstand,
+      _datumCtrl,
+      _adres,
+      _telefoonnummer,
+      _notes,
+      _taxRate,
+      _currency,
     ]) {
       c.dispose();
     }
     super.dispose();
   }
 
-  void _continue() {
+  void _next() {
     if (_step == 0) {
       if (!_clientFormKey.currentState!.validate()) return;
       context.read<InvoiceProvider>().updateDraftClient(
-        name: _clientName.text.trim(),
-        company: _clientCompany.text.trim(),
-        email: _clientEmail.text.trim(),
-        phone: _clientPhone.text.trim(),
-        address: _clientAddress.text.trim(),
-        city: _clientCity.text.trim(),
-        state: _clientState.text.trim(),
-        zip: _clientZip.text.trim(),
-        country: _clientCountry.text.trim(),
+        naam: _naam.text.trim(),
+        kenteken: _kenteken.text.trim(),
+        kmstand: _kmstand.text.trim(),
+        datum: _datumCtrl.text.trim(),
+        adres: _adres.text.trim(),
+        telefoonnummer: _telefoonnummer.text.trim(),
       );
       setState(() => _step++);
     } else if (_step == 1) {
-      setState(() => _step++);
-    } else if (_step == 2) {
       final draft = context.read<InvoiceProvider>().draft;
       if (draft == null || draft.items.isEmpty) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text('Please add at least one item'),
+            content: Text('Voeg minimaal één Product toe'),
             behavior: SnackBarBehavior.floating,
           ),
         );
         return;
       }
       setState(() => _step++);
-    } else if (_step == 3) {
-      if (!_detailsFormKey.currentState!.validate()) return;
+    } else if (_step == 2) {
       context.read<InvoiceProvider>().updateDraftDetails(
         notes: _notes.text.trim(),
-        terms: _terms.text.trim(),
-        taxRate: double.tryParse(_taxRate.text) ?? 0.0,
-        issueDate: _issueDate,
-        dueDate: _dueDate,
-        currency: _currency.text.trim().isEmpty ? '\$' : _currency.text.trim(),
+        taxRate: double.tryParse(_taxRate.text) ?? 21.0,
+        issueDate: _datum,
+        currency: _currency.text.trim().isEmpty ? '€' : _currency.text.trim(),
       );
-      _goToPreview();
+      _saveAndPreview();
     }
   }
 
-  void _goToPreview() async {
-    final invoiceProvider = context.read<InvoiceProvider>();
+  Future<void> _saveAndPreview() async {
+    setState(() => _saving = true);
     try {
-      final saved = await invoiceProvider.saveDraft();
+      final saved = await context.read<InvoiceProvider>().saveDraft();
       if (!mounted) return;
       Navigator.of(context).pushReplacement(
-        MaterialPageRoute(
-          builder: (_) => InvoicePreviewScreen(invoice: saved),
-        ),
+        MaterialPageRoute(builder: (_) => InvoicePreviewScreen(invoice: saved)),
       );
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('Error saving invoice: $e'),
+          content: Text('Fout bij opslaan: $e'),
           behavior: SnackBarBehavior.floating,
         ),
       );
+      setState(() => _saving = false);
     }
   }
+
+  static const _stepLabels = ['Klantgegevens', 'Producten', 'Details'];
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('New Invoice'),
+        title: const Text('Nieuwe factuur'),
         leading: IconButton(
           icon: const Icon(Icons.close),
           onPressed: () {
             context.read<InvoiceProvider>().clearDraft();
-            if (Navigator.canPop(context)) Navigator.pop(context);
+            Navigator.pop(context);
           },
         ),
       ),
-      body: Stepper(
-        currentStep: _step,
-        physics: const ClampingScrollPhysics(),
-        onStepTapped: (s) {
-          if (s < _step) setState(() => _step = s);
-        },
-        controlsBuilder: (context, details) => Padding(
-          padding: const EdgeInsets.only(top: 16),
-          child: Row(
-            children: [
-              Expanded(
-                child: ElevatedButton(
-                  onPressed: _continue,
-                  child: Text(_step == 3 ? 'Preview Invoice' : 'Continue'),
-                ),
-              ),
-              const SizedBox(width: 12),
-              if (_step > 0)
-                Expanded(
-                  child: OutlinedButton(
-                    onPressed: () => setState(() => _step--),
-                    child: const Text('Back'),
-                  ),
-                ),
-            ],
+      body: Column(
+        children: [
+          _StepHeader(
+            current: _step,
+            labels: _stepLabels,
+            onTap: (s) {
+              if (s < _step) setState(() => _step = s);
+            },
           ),
-        ),
-        steps: [
-          Step(
-            title: const Text('Client Info'),
-            isActive: _step >= 0,
-            state: _step > 0 ? StepState.complete : StepState.indexed,
-            content: _ClientStep(
-              formKey: _clientFormKey,
-              name: _clientName,
-              company: _clientCompany,
-              email: _clientEmail,
-              phone: _clientPhone,
-              address: _clientAddress,
-              city: _clientCity,
-              state: _clientState,
-              zip: _clientZip,
-              country: _clientCountry,
+          Expanded(
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
+              child: _buildStepContent(),
             ),
           ),
-          Step(
-            title: const Text('Template'),
-            isActive: _step >= 1,
-            state: _step > 1 ? StepState.complete : StepState.indexed,
-            content: const _TemplateStep(),
+          _buildNavBar(),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildStepContent() {
+    switch (_step) {
+      case 0:
+        return _ClientStep(
+          formKey: _clientFormKey,
+          naam: _naam,
+          kenteken: _kenteken,
+          kmstand: _kmstand,
+          datumCtrl: _datumCtrl,
+          adres: _adres,
+          telefoonnummer: _telefoonnummer,
+          datum: _datum,
+          onDatumChanged: (d) {
+            setState(() {
+              _datum = d;
+              _datumCtrl.text = DateFormat('dd-MM-yyyy').format(d);
+            });
+          },
+        );
+      case 1:
+        return const _ItemsStep();
+      case 2:
+        return _DetailsStep(
+          notes: _notes,
+          taxRate: _taxRate,
+          currency: _currency,
+          onSubmit: _next,
+          saving: _saving,
+        );
+      default:
+        return const SizedBox.shrink();
+    }
+  }
+
+  Widget _buildNavBar() {
+    // On step 2 the continue button lives inside _DetailsStep itself,
+    // so the nav bar only shows the back button.
+    if (_step == 2) {
+      return Padding(
+        padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
+        child: Align(
+          alignment: Alignment.centerLeft,
+          child: OutlinedButton(
+            onPressed: () => setState(() => _step--),
+            child: const Text('Terug'),
           ),
-          Step(
-            title: const Text('Items'),
-            isActive: _step >= 2,
-            state: _step > 2 ? StepState.complete : StepState.indexed,
-            content: const _ItemsStep(),
-          ),
-          Step(
-            title: const Text('Details'),
-            isActive: _step >= 3,
-            state: StepState.indexed,
-            content: _DetailsStep(
-              formKey: _detailsFormKey,
-              notes: _notes,
-              terms: _terms,
-              taxRate: _taxRate,
-              currency: _currency,
-              issueDate: _issueDate,
-              dueDate: _dueDate,
-              onIssueDateChanged: (d) => setState(() => _issueDate = d),
-              onDueDateChanged: (d) => setState(() => _dueDate = d),
+        ),
+      );
+    }
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
+      child: Row(
+        children: [
+          if (_step > 0)
+            OutlinedButton(
+              onPressed: () => setState(() => _step--),
+              child: const Text('Terug'),
+            ),
+          Expanded(
+            child: Align(
+              alignment: Alignment.centerRight,
+              child: ElevatedButton(
+                onPressed: _saving ? null : _next,
+                child: const Text('Volgende'),
+              ),
             ),
           ),
         ],
@@ -222,48 +249,211 @@ class _CreateInvoiceScreenState extends State<CreateInvoiceScreen> {
   }
 }
 
-// ── Step 1: Client ─────────────────────────────────────────────────────────
+// ── Step header ────────────────────────────────────────────────────────────
 
-class _ClientStep extends StatelessWidget {
-  final GlobalKey<FormState> formKey;
-  final TextEditingController name, company, email, phone;
-  final TextEditingController address, city, state, zip, country;
+class _StepHeader extends StatelessWidget {
+  final int current;
+  final List<String> labels;
+  final ValueChanged<int> onTap;
 
-  const _ClientStep({
-    required this.formKey,
-    required this.name,
-    required this.company,
-    required this.email,
-    required this.phone,
-    required this.address,
-    required this.city,
-    required this.state,
-    required this.zip,
-    required this.country,
+  const _StepHeader({
+    required this.current,
+    required this.labels,
+    required this.onTap,
   });
 
   @override
   Widget build(BuildContext context) {
+    return Container(
+      color: Colors.white,
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      child: Row(
+        children: List.generate(labels.length, (i) {
+          final done = i < current;
+          final active = i == current;
+          return Expanded(
+            child: GestureDetector(
+              onTap: () => onTap(i),
+              behavior: HitTestBehavior.opaque,
+              child: Row(
+                children: [
+                  Container(
+                    width: 26,
+                    height: 26,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: done || active
+                          ? AppTheme.primary
+                          : Colors.transparent,
+                      border: Border.all(
+                        color: done || active
+                            ? AppTheme.primary
+                            : AppTheme.textSecondary,
+                        width: 1.5,
+                      ),
+                    ),
+                    child: Center(
+                      child: done
+                          ? const Icon(
+                              Icons.check,
+                              size: 14,
+                              color: Colors.white,
+                            )
+                          : Text(
+                              '${i + 1}',
+                              style: TextStyle(
+                                fontSize: 12,
+                                fontWeight: FontWeight.w700,
+                                color: active
+                                    ? Colors.white
+                                    : AppTheme.textSecondary,
+                              ),
+                            ),
+                    ),
+                  ),
+                  const SizedBox(width: 6),
+                  Flexible(
+                    child: Text(
+                      labels[i],
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: active
+                            ? FontWeight.w700
+                            : FontWeight.normal,
+                        color: active
+                            ? AppTheme.primary
+                            : done
+                            ? AppTheme.textPrimary
+                            : AppTheme.textSecondary,
+                      ),
+                    ),
+                  ),
+                  if (i < labels.length - 1) ...[
+                    const SizedBox(width: 4),
+                    Expanded(
+                      child: Container(
+                        height: 1.5,
+                        color: i < current ? AppTheme.primary : AppTheme.border,
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+          );
+        }),
+      ),
+    );
+  }
+}
+
+// ── Stap 1: Klantgegevens ──────────────────────────────────────────────────
+
+class _ClientStep extends StatefulWidget {
+  final GlobalKey<FormState> formKey;
+  final TextEditingController naam,
+      kenteken,
+      kmstand,
+      datumCtrl,
+      adres,
+      telefoonnummer;
+  final DateTime datum;
+  final ValueChanged<DateTime> onDatumChanged;
+
+  const _ClientStep({
+    required this.formKey,
+    required this.naam,
+    required this.kenteken,
+    required this.kmstand,
+    required this.datumCtrl,
+    required this.adres,
+    required this.telefoonnummer,
+    required this.datum,
+    required this.onDatumChanged,
+  });
+
+  @override
+  State<_ClientStep> createState() => _ClientStepState();
+}
+
+class _ClientStepState extends State<_ClientStep> {
+  final _naamFocus = FocusNode();
+  final _kenterkenFocus = FocusNode();
+  final _kmstandFocus = FocusNode();
+  final _adresFocus = FocusNode();
+  final _telefoonnummerFocus = FocusNode();
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback(
+      (_) { if (mounted) _naamFocus.requestFocus(); },
+    );
+  }
+
+  @override
+  void dispose() {
+    _naamFocus.dispose();
+    _kenterkenFocus.dispose();
+    _kmstandFocus.dispose();
+    _adresFocus.dispose();
+    _telefoonnummerFocus.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
     return Form(
-      key: formKey,
+      key: widget.formKey,
       child: Column(
         children: [
-          _tf(name, 'Client Name *', required: true),
-          _tf(company, 'Company (optional)'),
-          _tf(email, 'Email Address *',
-              type: TextInputType.emailAddress, required: true),
-          _tf(phone, 'Phone', type: TextInputType.phone),
-          _tf(address, 'Street Address'),
-          Row(children: [
-            Expanded(child: _tf(city, 'City')),
-            const SizedBox(width: 12),
-            Expanded(child: _tf(state, 'State')),
-          ]),
-          Row(children: [
-            Expanded(child: _tf(zip, 'Postal Code')),
-            const SizedBox(width: 12),
-            Expanded(child: _tf(country, 'Country')),
-          ]),
+          _tf(widget.naam, 'Naam *',
+              required: true,
+              focusNode: _naamFocus,
+              nextFocus: _kenterkenFocus),
+          const SizedBox(height: 12),
+          _tf(widget.kenteken, 'Kenteken *',
+              required: true,
+              focusNode: _kenterkenFocus,
+              nextFocus: _kmstandFocus),
+          const SizedBox(height: 12),
+          _tf(widget.kmstand, 'Km-stand *',
+              required: true,
+              type: TextInputType.number,
+              focusNode: _kmstandFocus,
+              nextFocus: _adresFocus),
+          const SizedBox(height: 12),
+          GestureDetector(
+            onTap: () async {
+              final picked = await showDatePicker(
+                context: context,
+                initialDate: widget.datum,
+                firstDate: DateTime(2020),
+                lastDate: DateTime(2030),
+              );
+              if (picked != null) widget.onDatumChanged(picked);
+            },
+            child: AbsorbPointer(
+              child: TextFormField(
+                controller: widget.datumCtrl,
+                decoration: const InputDecoration(
+                  labelText: 'Datum *',
+                  suffixIcon: Icon(Icons.calendar_today_outlined, size: 18),
+                ),
+                validator: (v) =>
+                    v == null || v.trim().isEmpty ? 'Verplicht' : null,
+              ),
+            ),
+          ),
+          const SizedBox(height: 12),
+          _tf(widget.adres, 'Adres (optioneel)',
+              focusNode: _adresFocus,
+              nextFocus: _telefoonnummerFocus),
+          const SizedBox(height: 12),
+          _tf(widget.telefoonnummer, 'Telefoonnummer (optioneel)',
+              type: TextInputType.phone,
+              focusNode: _telefoonnummerFocus),
         ],
       ),
     );
@@ -274,169 +464,39 @@ class _ClientStep extends StatelessWidget {
     String label, {
     bool required = false,
     TextInputType? type,
-  }) =>
-      Padding(
-        padding: const EdgeInsets.only(bottom: 12),
-        child: TextFormField(
-          controller: c,
-          keyboardType: type,
-          decoration: InputDecoration(labelText: label),
-          validator:
-              required ? (v) => v == null || v.trim().isEmpty ? 'Required' : null : null,
-        ),
-      );
+    FocusNode? focusNode,
+    FocusNode? nextFocus,
+  }) => TextFormField(
+    controller: c,
+    keyboardType: type,
+    focusNode: focusNode,
+    textInputAction:
+        nextFocus != null ? TextInputAction.next : TextInputAction.done,
+    onFieldSubmitted:
+        nextFocus != null
+            ? (_) => FocusScope.of(context).requestFocus(nextFocus)
+            : null,
+    decoration: InputDecoration(labelText: label),
+    validator: required
+        ? (v) => v == null || v.trim().isEmpty ? 'Verplicht' : null
+        : null,
+  );
 }
 
-// ── Step 2: Template ───────────────────────────────────────────────────────
-
-class _TemplateStep extends StatelessWidget {
-  const _TemplateStep();
-
-  @override
-  Widget build(BuildContext context) {
-    final draft = context.watch<InvoiceProvider>().draft;
-    final selected = draft?.template ?? 'modern';
-
-    return Column(
-      children: [
-        _TemplateCard(
-          id: 'modern',
-          title: 'Modern',
-          subtitle: 'Bold colored header, clean grid layout',
-          selected: selected == 'modern',
-          onTap: () =>
-              context.read<InvoiceProvider>().updateDraftTemplate('modern'),
-          color: AppTheme.primary,
-        ),
-        const SizedBox(height: 10),
-        _TemplateCard(
-          id: 'classic',
-          title: 'Classic',
-          subtitle: 'Traditional bordered invoice, professional look',
-          selected: selected == 'classic',
-          onTap: () =>
-              context.read<InvoiceProvider>().updateDraftTemplate('classic'),
-          color: const Color(0xFF374151),
-        ),
-        const SizedBox(height: 10),
-        _TemplateCard(
-          id: 'minimal',
-          title: 'Minimal',
-          subtitle: 'Clean and elegant with subtle lines',
-          selected: selected == 'minimal',
-          onTap: () =>
-              context.read<InvoiceProvider>().updateDraftTemplate('minimal'),
-          color: const Color(0xFF10B981),
-        ),
-      ],
-    );
-  }
-}
-
-class _TemplateCard extends StatelessWidget {
-  final String id, title, subtitle;
-  final bool selected;
-  final VoidCallback onTap;
-  final Color color;
-
-  const _TemplateCard({
-    required this.id,
-    required this.title,
-    required this.subtitle,
-    required this.selected,
-    required this.onTap,
-    required this.color,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 200),
-        padding: const EdgeInsets.all(16),
-        decoration: BoxDecoration(
-          border: Border.all(
-            color: selected ? color : AppTheme.border,
-            width: selected ? 2 : 1,
-          ),
-          borderRadius: BorderRadius.circular(12),
-          color: selected ? color.withAlpha(13) : Colors.white,
-        ),
-        child: Row(
-          children: [
-            Container(
-              width: 48,
-              height: 60,
-              decoration: BoxDecoration(
-                color: color.withAlpha(26),
-                borderRadius: BorderRadius.circular(6),
-                border: Border.all(color: color.withAlpha(51)),
-              ),
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Container(
-                    height: 8,
-                    width: 32,
-                    color: color,
-                    margin: const EdgeInsets.symmetric(vertical: 2),
-                  ),
-                  Container(
-                    height: 4,
-                    width: 32,
-                    color: color.withAlpha(77),
-                    margin: const EdgeInsets.symmetric(vertical: 2),
-                  ),
-                  Container(
-                    height: 4,
-                    width: 32,
-                    color: color.withAlpha(77),
-                    margin: const EdgeInsets.symmetric(vertical: 2),
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(width: 16),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(title,
-                      style: TextStyle(
-                          fontWeight: FontWeight.w700,
-                          fontSize: 15,
-                          color: selected ? color : AppTheme.textPrimary)),
-                  const SizedBox(height: 2),
-                  Text(subtitle,
-                      style: const TextStyle(
-                          color: AppTheme.textSecondary, fontSize: 13)),
-                ],
-              ),
-            ),
-            if (selected)
-              Icon(Icons.check_circle, color: color, size: 22),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-// ── Step 3: Items ──────────────────────────────────────────────────────────
+// ── Stap 2: Producten ─────────────────────────────────────────────────────────
 
 class _ItemsStep extends StatelessWidget {
   const _ItemsStep();
 
   @override
   Widget build(BuildContext context) {
-    final invoiceProvider = context.watch<InvoiceProvider>();
-    final items = invoiceProvider.draft?.items ?? [];
-    final currency = invoiceProvider.draft?.currency ?? '\$';
+    final provider = context.watch<InvoiceProvider>();
+    final items = provider.draft?.items ?? [];
+    final currency = provider.draft?.currency ?? '€';
+    final taxRate = provider.draft?.taxRate ?? 21.0;
 
     return Column(
       children: [
-        // Item list
         if (items.isEmpty)
           Container(
             padding: const EdgeInsets.all(24),
@@ -447,7 +507,7 @@ class _ItemsStep extends StatelessWidget {
             ),
             child: const Center(
               child: Text(
-                'No items yet. Add products from your list or create custom items.',
+                'Nog geen Producten. Voeg producten toe of maak een aangepaste Product aan.',
                 textAlign: TextAlign.center,
                 style: TextStyle(color: AppTheme.textSecondary),
               ),
@@ -458,15 +518,18 @@ class _ItemsStep extends StatelessWidget {
             (item) => _ItemRow(
               item: item,
               currency: currency,
+              taxRate: taxRate,
               onEdit: () => _showItemForm(context, item: item),
               onDelete: () =>
                   context.read<InvoiceProvider>().removeDraftItem(item.id),
+              onQtyChanged: (qty) => context
+                  .read<InvoiceProvider>()
+                  .updateDraftItem(item.copyWith(aantal: qty)),
             ),
           ),
 
         const SizedBox(height: 12),
 
-        // Total bar
         if (items.isNotEmpty) ...[
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
@@ -477,15 +540,20 @@ class _ItemsStep extends StatelessWidget {
             child: Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                const Text('Subtotal',
-                    style: TextStyle(
-                        fontWeight: FontWeight.w600, color: AppTheme.textPrimary)),
+                const Text(
+                  'Subtotaal incl. BTW',
+                  style: TextStyle(
+                    fontWeight: FontWeight.w600,
+                    color: AppTheme.textPrimary,
+                  ),
+                ),
                 Text(
-                  '$currency${invoiceProvider.draft!.subtotal.toStringAsFixed(2)}',
+                  '$currency${provider.draft!.totaalInclBtw.toStringAsFixed(2)}',
                   style: const TextStyle(
-                      fontWeight: FontWeight.w700,
-                      color: AppTheme.primary,
-                      fontSize: 16),
+                    fontWeight: FontWeight.w700,
+                    color: AppTheme.primary,
+                    fontSize: 16,
+                  ),
                 ),
               ],
             ),
@@ -493,14 +561,13 @@ class _ItemsStep extends StatelessWidget {
           const SizedBox(height: 12),
         ],
 
-        // Add buttons
         Row(
           children: [
             Expanded(
               child: OutlinedButton.icon(
                 onPressed: () => _showProductPicker(context),
                 icon: const Icon(Icons.inventory_2_outlined, size: 18),
-                label: const Text('From Products'),
+                label: const Text('Uit producten'),
               ),
             ),
             const SizedBox(width: 10),
@@ -508,7 +575,7 @@ class _ItemsStep extends StatelessWidget {
               child: OutlinedButton.icon(
                 onPressed: () => _showItemForm(context),
                 icon: const Icon(Icons.add, size: 18),
-                label: const Text('Custom Item'),
+                label: const Text('Aangepaste Product'),
               ),
             ),
           ],
@@ -522,7 +589,9 @@ class _ItemsStep extends StatelessWidget {
     if (products.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('No saved products. Add products in the Products tab.'),
+          content: Text(
+            'Geen opgeslagen producten. Voeg ze toe via het Producten tabblad.',
+          ),
           behavior: SnackBarBehavior.floating,
         ),
       );
@@ -552,75 +621,155 @@ class _ItemsStep extends StatelessWidget {
 class _ItemRow extends StatelessWidget {
   final InvoiceItem item;
   final String currency;
+  final double taxRate;
   final VoidCallback onEdit;
   final VoidCallback onDelete;
+  final ValueChanged<double> onQtyChanged;
 
   const _ItemRow({
     required this.item,
     required this.currency,
+    required this.taxRate,
     required this.onEdit,
     required this.onDelete,
+    required this.onQtyChanged,
   });
 
   @override
   Widget build(BuildContext context) {
     return Container(
       margin: const EdgeInsets.only(bottom: 8),
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(8),
         border: Border.all(color: AppTheme.border),
       ),
       child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(item.name,
-                    style: const TextStyle(
-                        fontWeight: FontWeight.w600, fontSize: 14)),
-                if (item.description.isNotEmpty)
-                  Text(item.description,
-                      style: const TextStyle(
-                          color: AppTheme.textSecondary, fontSize: 12)),
                 Text(
-                  '${item.quantity} × $currency${item.unitPrice.toStringAsFixed(2)}',
+                  item.omschrijving,
                   style: const TextStyle(
-                      color: AppTheme.textSecondary, fontSize: 12),
+                    fontWeight: FontWeight.w600,
+                    fontSize: 14,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  '$currency${item.prijsExBtw.toStringAsFixed(2)} ex. BTW → '
+                  '$currency${item.prijsInclBtw(taxRate).toStringAsFixed(2)} incl.',
+                  style: const TextStyle(
+                    color: AppTheme.textSecondary,
+                    fontSize: 11,
+                  ),
                 ),
               ],
             ),
           ),
+
           Column(
-            crossAxisAlignment: CrossAxisAlignment.end,
             children: [
-              Text(
-                '$currency${item.total.toStringAsFixed(2)}',
-                style: const TextStyle(
-                    fontWeight: FontWeight.w700,
-                    color: AppTheme.primary),
-              ),
               Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  GestureDetector(
-                    onTap: onEdit,
-                    child: const Icon(Icons.edit_outlined,
-                        size: 18, color: AppTheme.textSecondary),
+                  _QtyBtn(
+                    icon: Icons.remove,
+                    onTap: item.aantal > 1
+                        ? () => onQtyChanged(item.aantal - 1)
+                        : null,
                   ),
-                  const SizedBox(width: 8),
-                  GestureDetector(
-                    onTap: onDelete,
-                    child: const Icon(Icons.delete_outline,
-                        size: 18, color: AppTheme.error),
+                  SizedBox(
+                    width: 32,
+                    child: Text(
+                      _fmtQty(item.aantal),
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(
+                        fontWeight: FontWeight.w600,
+                        fontSize: 14,
+                      ),
+                    ),
+                  ),
+                  _QtyBtn(
+                    icon: Icons.add,
+                    onTap: () => onQtyChanged(item.aantal + 1),
                   ),
                 ],
+              ),
+              Text(
+                '$currency${item.totalInclBtw(taxRate).toStringAsFixed(2)}',
+                style: const TextStyle(
+                  fontWeight: FontWeight.w700,
+                  color: AppTheme.primary,
+                  fontSize: 13,
+                ),
+              ),
+            ],
+          ),
+
+          const SizedBox(width: 4),
+          Column(
+            children: [
+              GestureDetector(
+                onTap: onEdit,
+                child: const Padding(
+                  padding: EdgeInsets.all(4),
+                  child: Icon(
+                    Icons.edit_outlined,
+                    size: 18,
+                    color: AppTheme.textSecondary,
+                  ),
+                ),
+              ),
+              GestureDetector(
+                onTap: onDelete,
+                child: const Padding(
+                  padding: EdgeInsets.all(4),
+                  child: Icon(
+                    Icons.delete_outline,
+                    size: 18,
+                    color: AppTheme.error,
+                  ),
+                ),
               ),
             ],
           ),
         ],
+      ),
+    );
+  }
+
+  static String _fmtQty(double qty) =>
+      qty == qty.truncateToDouble() ? qty.toInt().toString() : qty.toString();
+}
+
+class _QtyBtn extends StatelessWidget {
+  final IconData icon;
+  final VoidCallback? onTap;
+
+  const _QtyBtn({required this.icon, this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.all(4),
+        decoration: BoxDecoration(
+          color: onTap != null
+              ? AppTheme.primary.withAlpha(20)
+              : AppTheme.border.withAlpha(80),
+          borderRadius: BorderRadius.circular(4),
+        ),
+        child: Icon(
+          icon,
+          size: 14,
+          color: onTap != null ? AppTheme.primary : AppTheme.textSecondary,
+        ),
       ),
     );
   }
@@ -632,6 +781,7 @@ class _ProductPickerSheet extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final currency = context.read<InvoiceProvider>().draft?.currency ?? '€';
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
@@ -639,12 +789,15 @@ class _ProductPickerSheet extends StatelessWidget {
           padding: const EdgeInsets.fromLTRB(20, 20, 20, 8),
           child: Row(
             children: [
-              const Text('Select Product',
-                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700)),
+              const Text(
+                'Product selecteren',
+                style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
+              ),
               const Spacer(),
               IconButton(
-                  icon: const Icon(Icons.close),
-                  onPressed: () => Navigator.pop(context)),
+                icon: const Icon(Icons.close),
+                onPressed: () => Navigator.pop(context),
+              ),
             ],
           ),
         ),
@@ -655,24 +808,26 @@ class _ProductPickerSheet extends StatelessWidget {
             itemCount: products.length,
             itemBuilder: (ctx, i) {
               final p = products[i];
-              final currency =
-                  context.read<InvoiceProvider>().draft?.currency ?? '\$';
               return ListTile(
-                title: Text(p.name,
-                    style: const TextStyle(fontWeight: FontWeight.w600)),
+                title: Text(
+                  p.name,
+                  style: const TextStyle(fontWeight: FontWeight.w600),
+                ),
                 subtitle: p.description.isNotEmpty ? Text(p.description) : null,
-                trailing: Text('$currency${p.price.toStringAsFixed(2)}/${p.unit}',
-                    style: const TextStyle(
-                        color: AppTheme.primary, fontWeight: FontWeight.w600)),
+                trailing: Text(
+                  '$currency${p.price.toStringAsFixed(2)} ex. BTW',
+                  style: const TextStyle(
+                    color: AppTheme.primary,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
                 onTap: () {
                   final item = context.read<InvoiceProvider>().createItem(
-                        name: p.name,
-                        description: p.description,
-                        quantity: 1,
-                        unitPrice: p.price,
-                        unit: p.unit,
-                        productId: p.id,
-                      );
+                    omschrijving: p.name,
+                    aantal: 1,
+                    prijsExBtw: p.price,
+                    productId: p.id,
+                  );
                   context.read<InvoiceProvider>().addDraftItem(item);
                   Navigator.pop(context);
                 },
@@ -696,62 +851,70 @@ class _ItemFormSheet extends StatefulWidget {
 
 class _ItemFormSheetState extends State<_ItemFormSheet> {
   final _formKey = GlobalKey<FormState>();
-  late final TextEditingController _name;
-  late final TextEditingController _description;
-  late final TextEditingController _qty;
-  late final TextEditingController _price;
-  late final TextEditingController _unit;
+  late final TextEditingController _omschrijving;
+  late final TextEditingController _aantal;
+  late final TextEditingController _prijs;
+
+  final _omschrijvingFocus = FocusNode();
+  final _aantalFocus = FocusNode();
+  final _prijsFocus = FocusNode();
 
   @override
   void initState() {
     super.initState();
-    _name = TextEditingController(text: widget.item?.name ?? '');
-    _description =
-        TextEditingController(text: widget.item?.description ?? '');
-    _qty = TextEditingController(
-        text: widget.item?.quantity.toString() ?? '1');
-    _price = TextEditingController(
-        text: widget.item?.unitPrice.toStringAsFixed(2) ?? '');
-    _unit = TextEditingController(text: widget.item?.unit ?? 'item');
+    _omschrijving = TextEditingController(
+      text: widget.item?.omschrijving ?? '',
+    );
+    _aantal = TextEditingController(
+      text: widget.item?.aantal.toString() ?? '1',
+    );
+    _prijs = TextEditingController(
+      text: widget.item?.prijsExBtw.toStringAsFixed(2) ?? '',
+    );
+    WidgetsBinding.instance.addPostFrameCallback(
+      (_) { if (mounted) _omschrijvingFocus.requestFocus(); },
+    );
   }
 
   @override
   void dispose() {
-    _name.dispose();
-    _description.dispose();
-    _qty.dispose();
-    _price.dispose();
-    _unit.dispose();
+    _omschrijving.dispose();
+    _aantal.dispose();
+    _prijs.dispose();
+    _omschrijvingFocus.dispose();
+    _aantalFocus.dispose();
+    _prijsFocus.dispose();
     super.dispose();
   }
 
   void _save() {
     if (!_formKey.currentState!.validate()) return;
-    final invoiceProvider = context.read<InvoiceProvider>();
-
+    final provider = context.read<InvoiceProvider>();
     if (widget.item != null) {
-      invoiceProvider.updateDraftItem(widget.item!.copyWith(
-        name: _name.text.trim(),
-        description: _description.text.trim(),
-        quantity: double.tryParse(_qty.text) ?? 1,
-        unitPrice: double.tryParse(_price.text) ?? 0,
-        unit: _unit.text.trim().isEmpty ? 'item' : _unit.text.trim(),
-      ));
-    } else {
-      final item = invoiceProvider.createItem(
-        name: _name.text.trim(),
-        description: _description.text.trim(),
-        quantity: double.tryParse(_qty.text) ?? 1,
-        unitPrice: double.tryParse(_price.text) ?? 0,
-        unit: _unit.text.trim().isEmpty ? 'item' : _unit.text.trim(),
+      provider.updateDraftItem(
+        widget.item!.copyWith(
+          omschrijving: _omschrijving.text.trim(),
+          aantal: double.tryParse(_aantal.text) ?? 1,
+          prijsExBtw: double.tryParse(_prijs.text) ?? 0,
+        ),
       );
-      invoiceProvider.addDraftItem(item);
+    } else {
+      provider.addDraftItem(
+        provider.createItem(
+          omschrijving: _omschrijving.text.trim(),
+          aantal: double.tryParse(_aantal.text) ?? 1,
+          prijsExBtw: double.tryParse(_prijs.text) ?? 0,
+        ),
+      );
     }
     Navigator.pop(context);
   }
 
   @override
   Widget build(BuildContext context) {
+    final currency = context.read<InvoiceProvider>().draft?.currency ?? '€';
+    final taxRate = context.read<InvoiceProvider>().draft?.taxRate ?? 21.0;
+
     return Padding(
       padding: EdgeInsets.only(
         left: 20,
@@ -767,40 +930,47 @@ class _ItemFormSheetState extends State<_ItemFormSheet> {
             Row(
               children: [
                 Text(
-                  widget.item == null ? 'Add Item' : 'Edit Item',
+                  widget.item == null
+                      ? 'Product toevoegen'
+                      : 'Product bewerken',
                   style: const TextStyle(
-                      fontSize: 18, fontWeight: FontWeight.w700),
+                    fontSize: 18,
+                    fontWeight: FontWeight.w700,
+                  ),
                 ),
                 const Spacer(),
                 IconButton(
-                    icon: const Icon(Icons.close),
-                    onPressed: () => Navigator.pop(context)),
+                  icon: const Icon(Icons.close),
+                  onPressed: () => Navigator.pop(context),
+                ),
               ],
             ),
             const SizedBox(height: 12),
             TextFormField(
-              controller: _name,
-              decoration: const InputDecoration(labelText: 'Item Name *'),
+              controller: _omschrijving,
+              focusNode: _omschrijvingFocus,
+              textInputAction: TextInputAction.next,
+              onFieldSubmitted: (_) =>
+                  FocusScope.of(context).requestFocus(_aantalFocus),
+              decoration: const InputDecoration(labelText: 'Omschrijving *'),
               validator: (v) =>
-                  v == null || v.trim().isEmpty ? 'Required' : null,
-            ),
-            const SizedBox(height: 12),
-            TextFormField(
-              controller: _description,
-              decoration: const InputDecoration(labelText: 'Description (optional)'),
-              maxLines: 2,
+                  v == null || v.trim().isEmpty ? 'Verplicht' : null,
             ),
             const SizedBox(height: 12),
             Row(
               children: [
                 Expanded(
                   child: TextFormField(
-                    controller: _qty,
-                    decoration: const InputDecoration(labelText: 'Quantity *'),
+                    controller: _aantal,
+                    focusNode: _aantalFocus,
+                    textInputAction: TextInputAction.next,
+                    onFieldSubmitted: (_) =>
+                        FocusScope.of(context).requestFocus(_prijsFocus),
+                    decoration: const InputDecoration(labelText: 'Aantal *'),
                     keyboardType: TextInputType.number,
                     validator: (v) {
-                      if (v == null || v.isEmpty) return 'Required';
-                      if (double.tryParse(v) == null) return 'Invalid';
+                      if (v == null || v.isEmpty) return 'Verplicht';
+                      if (double.tryParse(v) == null) return 'Ongeldig';
                       return null;
                     },
                   ),
@@ -808,29 +978,49 @@ class _ItemFormSheetState extends State<_ItemFormSheet> {
                 const SizedBox(width: 12),
                 Expanded(
                   child: TextFormField(
-                    controller: _price,
-                    decoration: const InputDecoration(labelText: 'Unit Price *'),
+                    controller: _prijs,
+                    focusNode: _prijsFocus,
+                    textInputAction: TextInputAction.done,
+                    onFieldSubmitted: (_) => _save(),
+                    decoration: InputDecoration(
+                      labelText: 'Prijs ex. BTW *',
+                      prefixText: '$currency ',
+                    ),
                     keyboardType: TextInputType.number,
                     validator: (v) {
-                      if (v == null || v.isEmpty) return 'Required';
-                      if (double.tryParse(v) == null) return 'Invalid';
+                      if (v == null || v.isEmpty) return 'Verplicht';
+                      if (double.tryParse(v) == null) return 'Ongeldig';
                       return null;
                     },
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: TextFormField(
-                    controller: _unit,
-                    decoration: const InputDecoration(labelText: 'Unit'),
                   ),
                 ),
               ],
             ),
+            const SizedBox(height: 8),
+            ValueListenableBuilder<TextEditingValue>(
+              valueListenable: _prijs,
+              builder: (context, value, _) {
+                final ex = double.tryParse(value.text) ?? 0;
+                final incl = ex * (1 + taxRate / 100);
+                return Align(
+                  alignment: Alignment.centerRight,
+                  child: Text(
+                    'Incl. BTW: $currency${incl.toStringAsFixed(2)}',
+                    style: const TextStyle(
+                      color: AppTheme.textSecondary,
+                      fontSize: 12,
+                    ),
+                  ),
+                );
+              },
+            ),
             const SizedBox(height: 20),
-            ElevatedButton(
-              onPressed: _save,
-              child: Text(widget.item == null ? 'Add Item' : 'Save Changes'),
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton(
+                onPressed: _save,
+                child: Text(widget.item == null ? 'Toevoegen' : 'Opslaan'),
+              ),
             ),
           ],
         ),
@@ -839,131 +1029,75 @@ class _ItemFormSheetState extends State<_ItemFormSheet> {
   }
 }
 
-// ── Step 4: Details ────────────────────────────────────────────────────────
+// ── Stap 3: Details ────────────────────────────────────────────────────────
 
 class _DetailsStep extends StatelessWidget {
-  final GlobalKey<FormState> formKey;
-  final TextEditingController notes, terms, taxRate, currency;
-  final DateTime issueDate, dueDate;
-  final ValueChanged<DateTime> onIssueDateChanged;
-  final ValueChanged<DateTime> onDueDateChanged;
+  final TextEditingController notes, taxRate, currency;
+  final VoidCallback onSubmit;
+  final bool saving;
 
   const _DetailsStep({
-    required this.formKey,
     required this.notes,
-    required this.terms,
     required this.taxRate,
     required this.currency,
-    required this.issueDate,
-    required this.dueDate,
-    required this.onIssueDateChanged,
-    required this.onDueDateChanged,
+    required this.onSubmit,
+    required this.saving,
   });
 
   @override
   Widget build(BuildContext context) {
-    return Form(
-      key: formKey,
-      child: Column(
-        children: [
-          Row(
-            children: [
-              Expanded(
-                child: _DateField(
-                  label: 'Issue Date',
-                  date: issueDate,
-                  onChanged: onIssueDateChanged,
+    return Column(
+      children: [
+        Row(
+          children: [
+            Expanded(
+              child: TextField(
+                controller: currency,
+                decoration: const InputDecoration(
+                  labelText: 'Valutasymbool',
+                  hintText: '€',
                 ),
               ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: _DateField(
-                  label: 'Due Date',
-                  date: dueDate,
-                  onChanged: onDueDateChanged,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 12),
-          Row(
-            children: [
-              Expanded(
-                child: TextFormField(
-                  controller: currency,
-                  decoration: const InputDecoration(
-                    labelText: 'Currency Symbol',
-                    hintText: '\$',
-                  ),
-                ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: TextFormField(
-                  controller: taxRate,
-                  decoration: const InputDecoration(labelText: 'Tax Rate (%)'),
-                  keyboardType: TextInputType.number,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 12),
-          TextFormField(
-            controller: terms,
-            decoration: const InputDecoration(
-              labelText: 'Payment Terms',
-              hintText: 'Net 30',
             ),
-          ),
-          const SizedBox(height: 12),
-          TextFormField(
-            controller: notes,
-            decoration: const InputDecoration(
-              labelText: 'Notes',
-              hintText: 'e.g. Thank you for your business!',
+            const SizedBox(width: 12),
+            Expanded(
+              child: TextField(
+                controller: taxRate,
+                decoration: const InputDecoration(labelText: 'BTW (%)'),
+                keyboardType: TextInputType.number,
+              ),
             ),
-            maxLines: 3,
+          ],
+        ),
+        const SizedBox(height: 12),
+        TextField(
+          controller: notes,
+          decoration: const InputDecoration(
+            labelText: 'Opmerkingen',
+            hintText: 'Eventuele opmerkingen bij de factuur',
           ),
-        ],
-      ),
-    );
-  }
-}
-
-class _DateField extends StatelessWidget {
-  final String label;
-  final DateTime date;
-  final ValueChanged<DateTime> onChanged;
-
-  const _DateField({
-    required this.label,
-    required this.date,
-    required this.onChanged,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: () async {
-        final picked = await showDatePicker(
-          context: context,
-          initialDate: date,
-          firstDate: DateTime(2020),
-          lastDate: DateTime(2030),
-        );
-        if (picked != null) onChanged(picked);
-      },
-      child: AbsorbPointer(
-        child: TextFormField(
-          decoration: InputDecoration(
-            labelText: label,
-            suffixIcon: const Icon(Icons.calendar_today_outlined, size: 18),
-          ),
-          controller: TextEditingController(
-            text: '${date.day}/${date.month}/${date.year}',
+          maxLines: 4,
+        ),
+        const SizedBox(height: 24),
+        SizedBox(
+          width: double.infinity,
+          child: ElevatedButton.icon(
+            onPressed: saving ? null : onSubmit,
+            icon: saving
+                ? const SizedBox(
+                    width: 18,
+                    height: 18,
+                    child: CircularProgressIndicator(
+                      color: Colors.white,
+                      strokeWidth: 2,
+                    ),
+                  )
+                : const Icon(Icons.visibility_outlined, size: 18),
+            label: Text(saving ? 'Bezig...' : 'Factuur bekijken'),
           ),
         ),
-      ),
+        const SizedBox(height: 8),
+      ],
     );
   }
 }

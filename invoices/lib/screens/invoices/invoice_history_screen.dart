@@ -14,19 +14,19 @@ class InvoiceHistoryScreen extends StatefulWidget {
 }
 
 class _InvoiceHistoryScreenState extends State<InvoiceHistoryScreen> {
-  String _filter = 'all';
+  String _filter = 'alle';
   String _search = '';
 
   @override
   Widget build(BuildContext context) {
     final provider = context.watch<InvoiceProvider>();
     final invoices = provider.invoices.where((inv) {
-      if (_filter != 'all' && inv.status != _filter) return false;
+      if (_filter != 'alle' && inv.status != _filter) return false;
       if (_search.isNotEmpty) {
         final q = _search.toLowerCase();
         return inv.invoiceNumber.toLowerCase().contains(q) ||
-            inv.clientName.toLowerCase().contains(q) ||
-            inv.clientCompany.toLowerCase().contains(q);
+            inv.clientNaam.toLowerCase().contains(q) ||
+            inv.clientKenteken.toLowerCase().contains(q);
       }
       return true;
     }).toList();
@@ -35,7 +35,6 @@ class _InvoiceHistoryScreenState extends State<InvoiceHistoryScreen> {
       backgroundColor: AppTheme.background,
       body: Column(
         children: [
-          // Search + Filter
           Container(
             color: Colors.white,
             padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
@@ -43,7 +42,7 @@ class _InvoiceHistoryScreenState extends State<InvoiceHistoryScreen> {
               children: [
                 TextField(
                   decoration: InputDecoration(
-                    hintText: 'Search invoices...',
+                    hintText: 'Zoeken op naam, kenteken of nummer...',
                     prefixIcon: const Icon(Icons.search, size: 20),
                     contentPadding: const EdgeInsets.symmetric(vertical: 10),
                     fillColor: AppTheme.background,
@@ -69,50 +68,49 @@ class _InvoiceHistoryScreenState extends State<InvoiceHistoryScreen> {
                   scrollDirection: Axis.horizontal,
                   child: Row(
                     children: [
-                      _FilterChip('all', 'All', _filter, () => setState(() => _filter = 'all')),
-                      _FilterChip('draft', 'Draft', _filter, () => setState(() => _filter = 'draft')),
-                      _FilterChip('sent', 'Sent', _filter, () => setState(() => _filter = 'sent')),
-                      _FilterChip('paid', 'Paid', _filter, () => setState(() => _filter = 'paid')),
+                      _FilterChip('alle', 'Alle', _filter,
+                          () => setState(() => _filter = 'alle')),
+                      _FilterChip('concept', 'Concept', _filter,
+                          () => setState(() => _filter = 'concept')),
+                      _FilterChip('verzonden', 'Verzonden', _filter,
+                          () => setState(() => _filter = 'verzonden')),
+                      _FilterChip('betaald', 'Betaald', _filter,
+                          () => setState(() => _filter = 'betaald')),
                     ],
                   ),
                 ),
               ],
             ),
           ),
-
-          // Stats row
           Container(
             color: Colors.white,
             padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
             child: _StatsRow(invoices: provider.invoices),
           ),
-
           const Divider(height: 1),
-
-          // Invoice list
           Expanded(
             child: !provider.isLoaded
                 ? const Center(child: CircularProgressIndicator())
                 : invoices.isEmpty
-                    ? _EmptyState(filter: _filter, search: _search)
+                    ? _EmptyState(
+                        filter: _filter,
+                        search: _search,
+                      )
                     : ListView.builder(
                         padding: const EdgeInsets.all(16),
                         itemCount: invoices.length,
                         itemBuilder: (ctx, i) => _InvoiceCard(
                           invoice: invoices[i],
-                          onTap: () => _openInvoice(invoices[i]),
+                          onTap: () => Navigator.of(context).push(
+                            MaterialPageRoute(
+                              builder: (_) =>
+                                  InvoicePreviewScreen(invoice: invoices[i]),
+                            ),
+                          ),
                         ),
                       ),
           ),
         ],
-      ),
-    );
-  }
-
-  void _openInvoice(Invoice invoice) {
-    Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (_) => InvoicePreviewScreen(invoice: invoice),
       ),
     );
   }
@@ -124,63 +122,47 @@ class _StatsRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final total = invoices.fold(0.0, (sum, inv) => sum + inv.total);
-    final paid = invoices.where((i) => i.status == 'paid').fold(0.0, (s, i) => s + i.total);
-    final unpaid = total - paid;
-    final currency = invoices.isNotEmpty ? invoices.first.currency : '\$';
+    final total = invoices.fold(0.0, (s, i) => s + i.totaalInclBtw);
+    final paid = invoices
+        .where((i) => i.status == 'betaald')
+        .fold(0.0, (s, i) => s + i.totaalInclBtw);
+    final currency = invoices.isNotEmpty ? invoices.first.currency : '€';
 
     return Row(
       children: [
-        _StatItem(
-          label: 'Total',
-          value: '$currency${total.toStringAsFixed(0)}',
-          color: AppTheme.textPrimary,
-        ),
-        _divider(),
-        _StatItem(
-          label: 'Paid',
-          value: '$currency${paid.toStringAsFixed(0)}',
-          color: const Color(0xFF10B981),
-        ),
-        _divider(),
-        _StatItem(
-          label: 'Unpaid',
-          value: '$currency${unpaid.toStringAsFixed(0)}',
-          color: AppTheme.error,
-        ),
-        _divider(),
-        _StatItem(
-          label: 'Count',
-          value: '${invoices.length}',
-          color: AppTheme.textSecondary,
-        ),
+        _Stat('Totaal', '$currency${total.toStringAsFixed(0)}', AppTheme.textPrimary),
+        _div(),
+        _Stat('Betaald', '$currency${paid.toStringAsFixed(0)}', const Color(0xFF10B981)),
+        _div(),
+        _Stat('Openstaand', '$currency${(total - paid).toStringAsFixed(0)}', AppTheme.error),
+        _div(),
+        _Stat('Aantal', '${invoices.length}', AppTheme.textSecondary),
       ],
     );
   }
 
-  Widget _divider() => Container(
-        height: 30,
-        width: 1,
-        color: AppTheme.border,
-        margin: const EdgeInsets.symmetric(horizontal: 12),
-      );
+  Widget _div() => Container(
+      height: 30, width: 1, color: AppTheme.border,
+      margin: const EdgeInsets.symmetric(horizontal: 12));
 }
 
-class _StatItem extends StatelessWidget {
+class _Stat extends StatelessWidget {
   final String label, value;
   final Color color;
-  const _StatItem({required this.label, required this.value, required this.color});
+  const _Stat(this.label, this.value, this.color);
 
   @override
   Widget build(BuildContext context) => Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(label,
-              style:
-                  const TextStyle(color: AppTheme.textSecondary, fontSize: 11)),
+              style: const TextStyle(
+                  color: AppTheme.textSecondary, fontSize: 11)),
           Text(value,
               style: TextStyle(
-                  color: color, fontWeight: FontWeight.w700, fontSize: 15)),
+                  color: color,
+                  fontWeight: FontWeight.w700,
+                  fontSize: 15)),
         ],
       );
 }
@@ -192,8 +174,6 @@ class _InvoiceCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final dateStr = DateFormat('MMM d, yyyy').format(invoice.issueDate);
-
     return Card(
       margin: const EdgeInsets.only(bottom: 10),
       child: InkWell(
@@ -204,8 +184,7 @@ class _InvoiceCard extends StatelessWidget {
           child: Row(
             children: [
               Container(
-                width: 44,
-                height: 44,
+                width: 44, height: 44,
                 decoration: BoxDecoration(
                   color: AppTheme.primary.withAlpha(26),
                   borderRadius: BorderRadius.circular(10),
@@ -229,42 +208,26 @@ class _InvoiceCard extends StatelessWidget {
                     ),
                     const SizedBox(height: 2),
                     Text(
-                      invoice.clientName +
-                          (invoice.clientCompany.isNotEmpty
-                              ? ' · ${invoice.clientCompany}'
-                              : ''),
+                      '${invoice.clientNaam} · ${invoice.clientKenteken}',
                       style: const TextStyle(
                           color: AppTheme.textSecondary, fontSize: 13),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                     ),
-                    Text(dateStr,
-                        style: const TextStyle(
-                            color: AppTheme.textSecondary, fontSize: 12)),
+                    Text(
+                      DateFormat('dd-MM-yyyy').format(invoice.issueDate),
+                      style: const TextStyle(
+                          color: AppTheme.textSecondary, fontSize: 12),
+                    ),
                   ],
                 ),
               ),
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.end,
-                children: [
-                  Text(
-                    '${invoice.currency}${invoice.total.toStringAsFixed(2)}',
-                    style: const TextStyle(
-                        fontWeight: FontWeight.w700,
-                        fontSize: 15,
-                        color: AppTheme.textPrimary),
-                  ),
-                  const SizedBox(height: 2),
-                  Text(
-                    'Due ${DateFormat('MMM d').format(invoice.dueDate)}',
-                    style: TextStyle(
-                        fontSize: 11,
-                        color: invoice.dueDate.isBefore(DateTime.now()) &&
-                                invoice.status != 'paid'
-                            ? AppTheme.error
-                            : AppTheme.textSecondary),
-                  ),
-                ],
+              Text(
+                '${invoice.currency}${invoice.totaalInclBtw.toStringAsFixed(2)}',
+                style: const TextStyle(
+                    fontWeight: FontWeight.w700,
+                    fontSize: 15,
+                    color: AppTheme.textPrimary),
               ),
               const SizedBox(width: 4),
               const Icon(Icons.chevron_right, color: AppTheme.textSecondary),
@@ -279,7 +242,6 @@ class _InvoiceCard extends StatelessWidget {
 class _FilterChip extends StatelessWidget {
   final String value, label, current;
   final VoidCallback onTap;
-
   const _FilterChip(this.value, this.label, this.current, this.onTap);
 
   @override
@@ -311,10 +273,10 @@ class _StatusBadge extends StatelessWidget {
   Widget build(BuildContext context) {
     Color color;
     switch (status) {
-      case 'paid':
+      case 'betaald':
         color = const Color(0xFF10B981);
         break;
-      case 'sent':
+      case 'verzonden':
         color = AppTheme.primary;
         break;
       default:
@@ -326,13 +288,9 @@ class _StatusBadge extends StatelessWidget {
         color: color.withAlpha(26),
         borderRadius: BorderRadius.circular(4),
       ),
-      child: Text(
-        status,
-        style: TextStyle(
-            color: color,
-            fontWeight: FontWeight.w600,
-            fontSize: 10),
-      ),
+      child: Text(status,
+          style: TextStyle(
+              color: color, fontWeight: FontWeight.w600, fontSize: 10)),
     );
   }
 }
@@ -343,7 +301,7 @@ class _EmptyState extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final isFiltered = filter != 'all' || search.isNotEmpty;
+    final isFiltered = filter != 'alle' || search.isNotEmpty;
     return Center(
       child: Padding(
         padding: const EdgeInsets.all(32),
@@ -354,18 +312,18 @@ class _EmptyState extends StatelessWidget {
                 size: 64, color: AppTheme.border),
             const SizedBox(height: 16),
             Text(
-              isFiltered ? 'No matching invoices' : 'No Invoices Yet',
+              isFiltered ? 'Geen overeenkomende facturen' : 'Nog geen facturen',
               style: const TextStyle(
                   fontSize: 18, fontWeight: FontWeight.w700),
             ),
             const SizedBox(height: 8),
             Text(
               isFiltered
-                  ? 'Try changing your search or filter'
-                  : 'Tap the + button to create your first invoice',
+                  ? 'Probeer een andere zoekopdracht of filter'
+                  : 'Tik op "Nieuwe factuur" om te beginnen',
               textAlign: TextAlign.center,
-              style:
-                  const TextStyle(color: AppTheme.textSecondary, fontSize: 14),
+              style: const TextStyle(
+                  color: AppTheme.textSecondary, fontSize: 14),
             ),
           ],
         ),

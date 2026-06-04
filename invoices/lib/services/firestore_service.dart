@@ -28,14 +28,14 @@ class FirestoreService {
         .set(info.toMap());
   }
 
-  // Merge-writes only the logoUrl so it survives even before full business info is saved.
-  Future<void> saveLogoUrl(String userId, String? logoUrl) async {
+  // Merge-writes only the logo so it survives even before full business info is saved.
+  Future<void> saveLogoUrl(String userId, String? logoBase64) async {
     await _db
         .collection('users')
         .doc(userId)
         .collection('settings')
         .doc('business')
-        .set({'logoUrl': logoUrl}, SetOptions(merge: true));
+        .set({'logoBase64': logoBase64}, SetOptions(merge: true));
   }
 
   Future<int> incrementAndGetInvoiceNumber(String userId) async {

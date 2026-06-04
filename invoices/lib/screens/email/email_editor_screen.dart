@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:provider/provider.dart';
 import '../../config/theme.dart';
 import '../../models/invoice.dart';
+import '../../providers/business_provider.dart';
 import '../../services/email_service.dart';
 import '../../services/pdf_service.dart';
 
@@ -13,111 +16,114 @@ class EmailEditorScreen extends StatefulWidget {
 }
 
 class _EmailEditorScreenState extends State<EmailEditorScreen> {
-  late final TextEditingController _subject;
-  late final TextEditingController _message;
+  late final TextEditingController _recipient;
+  late final String _subject;
+  late String _renderedBody;
   bool _sending = false;
 
   @override
   void initState() {
     super.initState();
-    _subject = TextEditingController(
-        text: EmailService.buildDefaultSubject(widget.invoice));
-    _message = TextEditingController(
-        text: EmailService.buildDefaultMessage(widget.invoice));
+    _recipient = TextEditingController();
+    _subject = EmailService.buildDefaultSubject(widget.invoice);
+    _renderedBody = '';
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (_renderedBody.isEmpty) {
+      final template =
+          context.read<BusinessProvider>().businessInfo?.emailTemplate ?? '';
+      _renderedBody = EmailService.renderTemplate(template, widget.invoice);
+    }
   }
 
   @override
   void dispose() {
-    _subject.dispose();
-    _message.dispose();
+    _recipient.dispose();
     super.dispose();
   }
 
   Future<void> _send() async {
     setState(() => _sending = true);
     try {
-      final pdfBytes = await PdfService.generatePdf(widget.invoice);
-
-      // Try cloud function first
-      final sent = await EmailService.sendViaCloudFunction(
-        invoice: widget.invoice,
-        recipientEmail: widget.invoice.clientEmail,
-        subject: _subject.text,
-        body: EmailService.buildEmailBody(
-          invoice: widget.invoice,
-          customMessage: _message.text,
-        ),
-        pdfBytes: pdfBytes,
+      final logoBytes = context.read<BusinessProvider>().logoBytes;
+      final pdfBytes = await PdfService.generatePdf(
+        widget.invoice,
+        logoBytes: logoBytes,
       );
-
+      await EmailService.sendViaEmailApp(
+        invoice: widget.invoice,
+        pdfBytes: pdfBytes,
+        subject: _subject,
+        body: _renderedBody,
+        recipientEmail: _recipient.text.trim(),
+      );
       if (!mounted) return;
-
-      if (sent) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Email sent successfully!'),
-            behavior: SnackBarBehavior.floating,
-            backgroundColor: Color(0xFF10B981),
-          ),
-        );
-        Navigator.pop(context);
-      } else {
-        // Fallback: open native share sheet with subject + message
-        await EmailService.shareInvoice(
-          invoice: widget.invoice,
-          pdfBytes: pdfBytes,
-          subject: _subject.text,
-          message: _message.text,
-        );
-      }
+      Navigator.pop(context);
     } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Error: $e'),
-            behavior: SnackBarBehavior.floating,
-          ),
-        );
-      }
-    } finally {
-      if (mounted) setState(() => _sending = false);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Fout: $e'),
+          behavior: SnackBarBehavior.floating,
+          backgroundColor: AppTheme.error,
+        ),
+      );
+      setState(() => _sending = false);
     }
   }
 
   Future<void> _share() async {
     setState(() => _sending = true);
     try {
-      final pdfBytes = await PdfService.generatePdf(widget.invoice);
+      final logoBytes = context.read<BusinessProvider>().logoBytes;
+      final pdfBytes = await PdfService.generatePdf(
+        widget.invoice,
+        logoBytes: logoBytes,
+      );
+      // WhatsApp ignores EXTRA_TEXT when sharing a PDF document, so copy
+      // the message to clipboard first and prompt the user to paste it.
+      final shareText = '$_subject\n\n$_renderedBody';
+      await Clipboard.setData(ClipboardData(text: shareText));
+
       await EmailService.shareInvoice(
         invoice: widget.invoice,
         pdfBytes: pdfBytes,
-        subject: _subject.text,
-        message: _message.text,
+        subject: _subject,
+        message: _renderedBody,
       );
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Bericht gekopieerd — plak het in WhatsApp'),
+          behavior: SnackBarBehavior.floating,
+          duration: Duration(seconds: 4),
+        ),
+      );
+      setState(() => _sending = false);
     } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Error: $e'),
-            behavior: SnackBarBehavior.floating,
-          ),
-        );
-      }
-    } finally {
-      if (mounted) setState(() => _sending = false);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Fout: $e'),
+          behavior: SnackBarBehavior.floating,
+          backgroundColor: AppTheme.error,
+        ),
+      );
+      setState(() => _sending = false);
     }
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Send Invoice'),
-      ),
+      appBar: AppBar(title: const Text('Factuur versturen')),
       body: ListView(
         padding: const EdgeInsets.all(20),
         children: [
-          // Recipient info
+          // Invoice summary
           Container(
             padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(
@@ -128,31 +134,44 @@ class _EmailEditorScreenState extends State<EmailEditorScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text('Sending to',
-                    style: TextStyle(
-                        color: AppTheme.primary,
-                        fontWeight: FontWeight.w600,
-                        fontSize: 12)),
-                const SizedBox(height: 4),
+                const Text(
+                  'Factuurgegevens',
+                  style: TextStyle(
+                    color: AppTheme.primary,
+                    fontWeight: FontWeight.w600,
+                    fontSize: 12,
+                  ),
+                ),
+                const SizedBox(height: 6),
                 Text(
-                  widget.invoice.clientName,
+                  widget.invoice.invoiceNumber,
                   style: const TextStyle(
-                      fontWeight: FontWeight.w700, fontSize: 15),
+                    fontWeight: FontWeight.w700,
+                    fontSize: 15,
+                  ),
                 ),
                 Text(
-                  widget.invoice.clientEmail,
+                  '${widget.invoice.clientNaam} · ${widget.invoice.clientKenteken}',
                   style: const TextStyle(color: AppTheme.textSecondary),
                 ),
-                const SizedBox(height: 8),
+                const SizedBox(height: 6),
                 Row(
                   children: [
-                    const Icon(Icons.attach_file,
-                        size: 16, color: AppTheme.textSecondary),
+                    const Icon(
+                      Icons.attach_file,
+                      size: 14,
+                      color: AppTheme.textSecondary,
+                    ),
                     const SizedBox(width: 4),
                     Text(
-                      'invoice_${widget.invoice.invoiceNumber}.pdf',
+                      // Derive a human-readable filename from the invoice
+                      // number rather than exposing the raw UUID stored in
+                      // pdfFilename.
+                      'Factuur_${widget.invoice.invoiceNumber}.pdf',
                       style: const TextStyle(
-                          color: AppTheme.textSecondary, fontSize: 13),
+                        color: AppTheme.textSecondary,
+                        fontSize: 12,
+                      ),
                     ),
                   ],
                 ),
@@ -162,51 +181,56 @@ class _EmailEditorScreenState extends State<EmailEditorScreen> {
 
           const SizedBox(height: 20),
 
-          const Text('Subject',
-              style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
-          const SizedBox(height: 6),
-          TextFormField(
-            controller: _subject,
-            decoration: const InputDecoration(hintText: 'Email subject'),
+          const Text(
+            'E-mailadres ontvanger',
+            style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13),
           ),
-
-          const SizedBox(height: 16),
-
-          const Text('Message',
-              style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
           const SizedBox(height: 6),
           TextFormField(
-            controller: _message,
-            maxLines: 10,
+            controller: _recipient,
+            keyboardType: TextInputType.emailAddress,
             decoration: const InputDecoration(
-              hintText: 'Write your message here...',
-              alignLabelWithHint: true,
+              hintText: 'klant@voorbeeld.nl',
+              prefixIcon: Icon(Icons.email_outlined, size: 18),
             ),
           ),
 
-          const SizedBox(height: 12),
+          const SizedBox(height: 20),
 
+          const Text(
+            'Berichtvoorbeeld',
+            style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13),
+          ),
+          const SizedBox(height: 6),
           Container(
-            padding: const EdgeInsets.all(12),
+            width: double.infinity,
+            padding: const EdgeInsets.all(14),
             decoration: BoxDecoration(
               color: AppTheme.background,
               borderRadius: BorderRadius.circular(8),
               border: Border.all(color: AppTheme.border),
             ),
-            child: const Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Icon(Icons.info_outline, size: 16, color: AppTheme.textSecondary),
-                SizedBox(width: 8),
-                Expanded(
-                  child: Text(
-                    'Subject and message are passed to your email app. '
-                    'On WhatsApp the message appears as *Subject*\n\nMessage.',
-                    style: TextStyle(color: AppTheme.textSecondary, fontSize: 12),
-                  ),
-                ),
-              ],
+            child: Text(
+              _renderedBody,
+              style: const TextStyle(
+                fontSize: 13,
+                color: AppTheme.textPrimary,
+                height: 1.5,
+              ),
             ),
+          ),
+          const SizedBox(height: 6),
+          const Row(
+            children: [
+              Icon(Icons.info_outline, size: 14, color: AppTheme.textSecondary),
+              SizedBox(width: 6),
+              Expanded(
+                child: Text(
+                  'Bewerk het sjabloon via Instellingen → E-mail sjabloon',
+                  style: TextStyle(fontSize: 11, color: AppTheme.textSecondary),
+                ),
+              ),
+            ],
           ),
 
           const SizedBox(height: 24),
@@ -218,10 +242,12 @@ class _EmailEditorScreenState extends State<EmailEditorScreen> {
                     width: 18,
                     height: 18,
                     child: CircularProgressIndicator(
-                        color: Colors.white, strokeWidth: 2),
+                      color: Colors.white,
+                      strokeWidth: 2,
+                    ),
                   )
-                : const Icon(Icons.send_outlined, size: 18),
-            label: Text(_sending ? 'Sending...' : 'Send Invoice'),
+                : const Icon(Icons.email_outlined, size: 18),
+            label: Text(_sending ? 'Bezig...' : 'Verstuur via e-mail app'),
           ),
 
           const SizedBox(height: 12),
@@ -229,7 +255,7 @@ class _EmailEditorScreenState extends State<EmailEditorScreen> {
           OutlinedButton.icon(
             onPressed: _sending ? null : _share,
             icon: const Icon(Icons.share_outlined, size: 18),
-            label: const Text('Share PDF'),
+            label: const Text('Delen (WhatsApp, enz.)'),
           ),
 
           const SizedBox(height: 24),

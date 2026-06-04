@@ -20,7 +20,6 @@ class _HomeScreenState extends State<HomeScreen> {
 
   final List<Widget> _screens = const [
     InvoiceHistoryScreen(),
-    CreateInvoiceScreen(),
     ProductsScreen(),
     BusinessInfoScreen(isFirstTime: false),
   ];
@@ -47,7 +46,7 @@ class _HomeScreenState extends State<HomeScreen> {
             Text(
               business.businessInfo?.name.isNotEmpty == true
                   ? business.businessInfo!.name
-                  : 'InvoiceApp',
+                  : 'Facturatie App',
               style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 18),
             ),
           ],
@@ -71,40 +70,36 @@ class _HomeScreenState extends State<HomeScreen> {
             ),
         ],
       ),
-      body: IndexedStack(
-        index: _currentIndex,
-        children: _screens,
-      ),
+      body: IndexedStack(index: _currentIndex, children: _screens),
+      floatingActionButton: _currentIndex == 0
+          ? FloatingActionButton.extended(
+              heroTag: 'home_new_invoice',
+              onPressed: _openCreateInvoice,
+              backgroundColor: AppTheme.primary,
+              icon: const Icon(Icons.add, color: Colors.white),
+              label: const Text('Nieuwe factuur',
+                  style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600)),
+            )
+          : null,
       bottomNavigationBar: Container(
         decoration: const BoxDecoration(
           border: Border(top: BorderSide(color: AppTheme.border)),
         ),
         child: BottomNavigationBar(
           currentIndex: _currentIndex,
-          onTap: (index) {
-            if (index == 1) {
-              // New Invoice — navigate as modal for fresh state
-              _openCreateInvoice();
-              return;
-            }
-            setState(() => _currentIndex = index == 1 ? 0 : index);
-          },
+          onTap: (i) => setState(() => _currentIndex = i),
           items: const [
             BottomNavigationBarItem(
               icon: Icon(Icons.history),
-              label: 'Invoices',
-            ),
-            BottomNavigationBarItem(
-              icon: Icon(Icons.add_circle, size: 28),
-              label: 'New',
+              label: 'Facturen',
             ),
             BottomNavigationBarItem(
               icon: Icon(Icons.inventory_2_outlined),
-              label: 'Products',
+              label: 'Producten',
             ),
             BottomNavigationBarItem(
               icon: Icon(Icons.business_outlined),
-              label: 'Settings',
+              label: 'Instellingen',
             ),
           ],
         ),
@@ -137,20 +132,16 @@ class _HomeScreenState extends State<HomeScreen> {
                   backgroundImage: NetworkImage(auth.user!.photoURL!),
                 ),
               const SizedBox(height: 12),
-              Text(
-                auth.user?.displayName ?? 'User',
-                style: const TextStyle(
-                    fontSize: 18, fontWeight: FontWeight.w600),
-              ),
-              Text(
-                auth.user?.email ?? '',
-                style: const TextStyle(color: AppTheme.textSecondary),
-              ),
+              Text(auth.user?.displayName ?? 'Gebruiker',
+                  style: const TextStyle(
+                      fontSize: 18, fontWeight: FontWeight.w600)),
+              Text(auth.user?.email ?? '',
+                  style: const TextStyle(color: AppTheme.textSecondary)),
               const SizedBox(height: 20),
               const Divider(),
               ListTile(
                 leading: const Icon(Icons.logout, color: AppTheme.error),
-                title: const Text('Sign Out',
+                title: const Text('Uitloggen',
                     style: TextStyle(color: AppTheme.error)),
                 onTap: () {
                   Navigator.pop(ctx);

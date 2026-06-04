@@ -15,14 +15,14 @@ class ProductsScreen extends StatelessWidget {
     return Scaffold(
       backgroundColor: AppTheme.background,
       body: products.products.isEmpty
-          ? _EmptyState(onAdd: () => _showProductForm(context, null))
+          ? _EmptyState(onAdd: () => _showForm(context, null))
           : ListView(
               padding: const EdgeInsets.all(16),
               children: [
                 Padding(
                   padding: const EdgeInsets.only(bottom: 16),
                   child: Text(
-                    '${products.products.length} product${products.products.length == 1 ? '' : 's'}',
+                    '${products.products.length} product${products.products.length == 1 ? '' : 'en'}',
                     style: const TextStyle(
                         color: AppTheme.textSecondary, fontSize: 13),
                   ),
@@ -30,7 +30,7 @@ class ProductsScreen extends StatelessWidget {
                 ...products.products.map(
                   (p) => _ProductCard(
                     product: p,
-                    onEdit: () => _showProductForm(context, p),
+                    onEdit: () => _showForm(context, p),
                     onDelete: () => _confirmDelete(context, p),
                   ),
                 ),
@@ -39,16 +39,17 @@ class ProductsScreen extends StatelessWidget {
       floatingActionButton: products.products.isEmpty
           ? null
           : FloatingActionButton.extended(
-              onPressed: () => _showProductForm(context, null),
+              heroTag: null,
+              onPressed: () => _showForm(context, null),
               backgroundColor: AppTheme.primary,
               icon: const Icon(Icons.add, color: Colors.white),
-              label: const Text('Add Product',
+              label: const Text('Product toevoegen',
                   style: TextStyle(color: Colors.white)),
             ),
     );
   }
 
-  void _showProductForm(BuildContext context, Product? product) {
+  void _showForm(BuildContext context, Product? product) {
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -63,12 +64,12 @@ class ProductsScreen extends StatelessWidget {
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Delete Product'),
-        content: Text('Delete "${product.name}"? This cannot be undone.'),
+        title: const Text('Product verwijderen'),
+        content: Text('Verwijder "${product.name}"? Dit kan niet ongedaan worden gemaakt.'),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx),
-            child: const Text('Cancel'),
+            child: const Text('Annuleren'),
           ),
           TextButton(
             onPressed: () {
@@ -76,7 +77,7 @@ class ProductsScreen extends StatelessWidget {
               context.read<ProductProvider>().deleteProduct(product.id);
             },
             style: TextButton.styleFrom(foregroundColor: AppTheme.error),
-            child: const Text('Delete'),
+            child: const Text('Verwijderen'),
           ),
         ],
       ),
@@ -89,11 +90,8 @@ class _ProductCard extends StatelessWidget {
   final VoidCallback onEdit;
   final VoidCallback onDelete;
 
-  const _ProductCard({
-    required this.product,
-    required this.onEdit,
-    required this.onDelete,
-  });
+  const _ProductCard(
+      {required this.product, required this.onEdit, required this.onDelete});
 
   @override
   Widget build(BuildContext context) {
@@ -124,7 +122,7 @@ class _ProductCard extends StatelessWidget {
                   style: const TextStyle(
                       color: AppTheme.textSecondary, fontSize: 12)),
             Text(
-              '${product.price.toStringAsFixed(2)} / ${product.unit}',
+              '€${product.price.toStringAsFixed(2)} ex. BTW / ${product.unit}',
               style: const TextStyle(
                   color: AppTheme.primary,
                   fontWeight: FontWeight.w600,
@@ -171,11 +169,10 @@ class _ProductFormState extends State<_ProductForm> {
   void initState() {
     super.initState();
     _name = TextEditingController(text: widget.product?.name ?? '');
-    _description =
-        TextEditingController(text: widget.product?.description ?? '');
+    _description = TextEditingController(text: widget.product?.description ?? '');
     _price = TextEditingController(
         text: widget.product?.price.toStringAsFixed(2) ?? '');
-    _unit = TextEditingController(text: widget.product?.unit ?? 'item');
+    _unit = TextEditingController(text: widget.product?.unit ?? 'stuk');
   }
 
   @override
@@ -189,15 +186,13 @@ class _ProductFormState extends State<_ProductForm> {
 
   Future<void> _save() async {
     if (!_formKey.currentState!.validate()) return;
-
     final product = Product(
       id: widget.product?.id ?? const Uuid().v4(),
       name: _name.text.trim(),
       description: _description.text.trim(),
       price: double.tryParse(_price.text) ?? 0,
-      unit: _unit.text.trim().isEmpty ? 'item' : _unit.text.trim(),
+      unit: _unit.text.trim().isEmpty ? 'stuk' : _unit.text.trim(),
     );
-
     await context.read<ProductProvider>().saveProduct(product);
     if (mounted) Navigator.pop(context);
   }
@@ -206,9 +201,7 @@ class _ProductFormState extends State<_ProductForm> {
   Widget build(BuildContext context) {
     return Padding(
       padding: EdgeInsets.only(
-        left: 20,
-        right: 20,
-        top: 20,
+        left: 20, right: 20, top: 20,
         bottom: MediaQuery.of(context).viewInsets.bottom + 20,
       ),
       child: Form(
@@ -220,29 +213,26 @@ class _ProductFormState extends State<_ProductForm> {
             Row(
               children: [
                 Text(
-                  widget.product == null ? 'New Product' : 'Edit Product',
-                  style: const TextStyle(
-                      fontSize: 18, fontWeight: FontWeight.w700),
+                  widget.product == null ? 'Nieuw product' : 'Product bewerken',
+                  style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
                 ),
                 const Spacer(),
                 IconButton(
-                  icon: const Icon(Icons.close),
-                  onPressed: () => Navigator.pop(context),
-                ),
+                    icon: const Icon(Icons.close),
+                    onPressed: () => Navigator.pop(context)),
               ],
             ),
             const SizedBox(height: 16),
             TextFormField(
               controller: _name,
-              decoration: const InputDecoration(labelText: 'Product / Service Name *'),
+              decoration: const InputDecoration(labelText: 'Naam *'),
               validator: (v) =>
-                  v == null || v.trim().isEmpty ? 'Required' : null,
+                  v == null || v.trim().isEmpty ? 'Verplicht' : null,
             ),
             const SizedBox(height: 12),
             TextFormField(
               controller: _description,
-              decoration:
-                  const InputDecoration(labelText: 'Description (optional)'),
+              decoration: const InputDecoration(labelText: 'Omschrijving (optioneel)'),
               maxLines: 2,
             ),
             const SizedBox(height: 12),
@@ -252,11 +242,12 @@ class _ProductFormState extends State<_ProductForm> {
                   flex: 2,
                   child: TextFormField(
                     controller: _price,
-                    decoration: const InputDecoration(labelText: 'Price *'),
+                    decoration: const InputDecoration(
+                        labelText: 'Prijs ex. BTW *', prefixText: '€ '),
                     keyboardType: TextInputType.number,
                     validator: (v) {
-                      if (v == null || v.isEmpty) return 'Required';
-                      if (double.tryParse(v) == null) return 'Invalid number';
+                      if (v == null || v.isEmpty) return 'Verplicht';
+                      if (double.tryParse(v) == null) return 'Ongeldig';
                       return null;
                     },
                   ),
@@ -265,10 +256,7 @@ class _ProductFormState extends State<_ProductForm> {
                 Expanded(
                   child: TextFormField(
                     controller: _unit,
-                    decoration: const InputDecoration(
-                      labelText: 'Unit',
-                      hintText: 'item',
-                    ),
+                    decoration: const InputDecoration(labelText: 'Eenheid'),
                   ),
                 ),
               ],
@@ -276,7 +264,9 @@ class _ProductFormState extends State<_ProductForm> {
             const SizedBox(height: 20),
             ElevatedButton(
               onPressed: _save,
-              child: Text(widget.product == null ? 'Add Product' : 'Save Changes'),
+              child: Text(widget.product == null
+                  ? 'Product toevoegen'
+                  : 'Wijzigingen opslaan'),
             ),
           ],
         ),
@@ -308,16 +298,14 @@ class _EmptyState extends StatelessWidget {
                   color: AppTheme.primary, size: 40),
             ),
             const SizedBox(height: 20),
-            const Text(
-              'No Products Yet',
-              style: TextStyle(fontSize: 20, fontWeight: FontWeight.w700),
-            ),
+            const Text('Nog geen producten',
+                style:
+                    TextStyle(fontSize: 20, fontWeight: FontWeight.w700)),
             const SizedBox(height: 8),
             const Text(
-              'Add your products and services to quickly add them to invoices.',
+              'Voeg je producten en diensten toe om ze snel aan facturen toe te kunnen voegen.',
               textAlign: TextAlign.center,
-              style:
-                  TextStyle(color: AppTheme.textSecondary, fontSize: 14),
+              style: TextStyle(color: AppTheme.textSecondary, fontSize: 14),
             ),
             const SizedBox(height: 24),
             SizedBox(
@@ -325,7 +313,7 @@ class _EmptyState extends StatelessWidget {
               child: ElevatedButton.icon(
                 onPressed: onAdd,
                 icon: const Icon(Icons.add),
-                label: const Text('Add Product'),
+                label: const Text('Product toevoegen'),
               ),
             ),
           ],

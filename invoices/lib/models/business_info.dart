@@ -9,13 +9,13 @@ class BusinessInfo {
   final String phone;
   final String email;
   final String website;
-  final String? logoUrl;
+  final String? logoBase64;
   final int nextInvoiceNumber;
   final String currency;
   final double defaultTaxRate;
   final String invoicePrefix;
-  final String defaultPaymentTerms;
   final String? defaultNotes;
+  final String emailTemplate;
 
   const BusinessInfo({
     required this.id,
@@ -28,14 +28,21 @@ class BusinessInfo {
     this.phone = '',
     required this.email,
     this.website = '',
-    this.logoUrl,
+    this.logoBase64,
     this.nextInvoiceNumber = 1,
-    this.currency = '\$',
-    this.defaultTaxRate = 0.0,
-    this.invoicePrefix = 'INV',
-    this.defaultPaymentTerms = 'Net 30',
+    this.currency = '€',
+    this.defaultTaxRate = 21.0,
+    this.invoicePrefix = 'F',
     this.defaultNotes,
+    this.emailTemplate = kDefaultEmailTemplate,
   });
+
+  static const kDefaultEmailTemplate =
+      'Beste {naam},\n\n'
+      'Bijgevoegd vindt u factuur {factuur_nummer} voor het voertuig met kenteken {kenteken} (Km-stand: {kmstand}).\n\n'
+      'Heeft u vragen over deze factuur? Neem dan gerust contact met ons op.\n\n'
+      'Met vriendelijke groet,\n'
+      '{bedrijfsnaam}';
 
   String get formattedAddress {
     final parts = [address, city, state, zip, country].where((s) => s.isNotEmpty).toList();
@@ -55,13 +62,13 @@ class BusinessInfo {
         'phone': phone,
         'email': email,
         'website': website,
-        'logoUrl': logoUrl,
+        'logoBase64': logoBase64,
         'nextInvoiceNumber': nextInvoiceNumber,
         'currency': currency,
         'defaultTaxRate': defaultTaxRate,
         'invoicePrefix': invoicePrefix,
-        'defaultPaymentTerms': defaultPaymentTerms,
         'defaultNotes': defaultNotes,
+        'emailTemplate': emailTemplate,
       };
 
   factory BusinessInfo.fromMap(String id, Map<String, dynamic> map) => BusinessInfo(
@@ -75,13 +82,13 @@ class BusinessInfo {
         phone: map['phone'] ?? '',
         email: map['email'] ?? '',
         website: map['website'] ?? '',
-        logoUrl: map['logoUrl'],
+        logoBase64: map['logoBase64'],
         nextInvoiceNumber: map['nextInvoiceNumber'] ?? 1,
-        currency: map['currency'] ?? '\$',
-        defaultTaxRate: (map['defaultTaxRate'] ?? 0.0).toDouble(),
-        invoicePrefix: map['invoicePrefix'] ?? 'INV',
-        defaultPaymentTerms: map['defaultPaymentTerms'] ?? 'Net 30',
+        currency: map['currency'] ?? '€',
+        defaultTaxRate: (map['defaultTaxRate'] ?? 21.0).toDouble(),
+        invoicePrefix: map['invoicePrefix'] ?? 'F',
         defaultNotes: map['defaultNotes'],
+        emailTemplate: map['emailTemplate'] ?? kDefaultEmailTemplate,
       );
 
   BusinessInfo copyWith({
@@ -94,13 +101,14 @@ class BusinessInfo {
     String? phone,
     String? email,
     String? website,
-    String? logoUrl,
+    String? logoBase64,
+    bool clearLogo = false,
     int? nextInvoiceNumber,
     String? currency,
     double? defaultTaxRate,
     String? invoicePrefix,
-    String? defaultPaymentTerms,
     String? defaultNotes,
+    String? emailTemplate,
   }) =>
       BusinessInfo(
         id: id,
@@ -113,12 +121,12 @@ class BusinessInfo {
         phone: phone ?? this.phone,
         email: email ?? this.email,
         website: website ?? this.website,
-        logoUrl: logoUrl ?? this.logoUrl,
+        logoBase64: clearLogo ? null : (logoBase64 ?? this.logoBase64),
         nextInvoiceNumber: nextInvoiceNumber ?? this.nextInvoiceNumber,
         currency: currency ?? this.currency,
         defaultTaxRate: defaultTaxRate ?? this.defaultTaxRate,
         invoicePrefix: invoicePrefix ?? this.invoicePrefix,
-        defaultPaymentTerms: defaultPaymentTerms ?? this.defaultPaymentTerms,
         defaultNotes: defaultNotes ?? this.defaultNotes,
+        emailTemplate: emailTemplate ?? this.emailTemplate,
       );
 }

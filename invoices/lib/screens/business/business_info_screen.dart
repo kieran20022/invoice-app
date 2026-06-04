@@ -1,5 +1,3 @@
-import 'dart:io';
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:provider/provider.dart';
@@ -30,9 +28,9 @@ class _BusinessInfoScreenState extends State<BusinessInfoScreen> {
   late final TextEditingController _currency;
   late final TextEditingController _taxRate;
   late final TextEditingController _invoicePrefix;
-  late final TextEditingController _paymentTerms;
   late final TextEditingController _notes;
   late final TextEditingController _startingNumber;
+  late final TextEditingController _emailTemplate;
 
   bool _initialized = false;
 
@@ -48,12 +46,12 @@ class _BusinessInfoScreenState extends State<BusinessInfoScreen> {
     _state = TextEditingController();
     _zip = TextEditingController();
     _country = TextEditingController();
-    _currency = TextEditingController(text: '\$');
-    _taxRate = TextEditingController(text: '0');
-    _invoicePrefix = TextEditingController(text: 'INV');
-    _paymentTerms = TextEditingController(text: 'Net 30');
+    _currency = TextEditingController(text: '€');
+    _taxRate = TextEditingController(text: '21');
+    _invoicePrefix = TextEditingController(text: 'F');
     _notes = TextEditingController();
     _startingNumber = TextEditingController(text: '1');
+    _emailTemplate = TextEditingController(text: BusinessInfo.kDefaultEmailTemplate);
   }
 
   @override
@@ -61,7 +59,7 @@ class _BusinessInfoScreenState extends State<BusinessInfoScreen> {
     for (final c in [
       _name, _email, _phone, _website, _address, _city, _state,
       _zip, _country, _currency, _taxRate, _invoicePrefix,
-      _paymentTerms, _notes, _startingNumber,
+      _notes, _startingNumber, _emailTemplate,
     ]) {
       c.dispose();
     }
@@ -83,9 +81,9 @@ class _BusinessInfoScreenState extends State<BusinessInfoScreen> {
     _currency.text = info.currency;
     _taxRate.text = info.defaultTaxRate.toString();
     _invoicePrefix.text = info.invoicePrefix;
-    _paymentTerms.text = info.defaultPaymentTerms;
     _notes.text = info.defaultNotes ?? '';
     _startingNumber.text = info.nextInvoiceNumber.toString();
+    _emailTemplate.text = info.emailTemplate;
   }
 
   Future<void> _save() async {
@@ -106,49 +104,47 @@ class _BusinessInfoScreenState extends State<BusinessInfoScreen> {
       state: _state.text.trim(),
       zip: _zip.text.trim(),
       country: _country.text.trim(),
-      logoUrl: existing?.logoUrl,
-      currency: _currency.text.trim().isEmpty ? '\$' : _currency.text.trim(),
-      defaultTaxRate: double.tryParse(_taxRate.text) ?? 0.0,
-      invoicePrefix: _invoicePrefix.text.trim().isEmpty ? 'INV' : _invoicePrefix.text.trim(),
-      defaultPaymentTerms: _paymentTerms.text.trim(),
+      logoBase64: existing?.logoBase64,
+      currency: _currency.text.trim().isEmpty ? '€' : _currency.text.trim(),
+      defaultTaxRate: double.tryParse(_taxRate.text) ?? 21.0,
+      invoicePrefix: _invoicePrefix.text.trim().isEmpty ? 'F' : _invoicePrefix.text.trim(),
       defaultNotes: _notes.text.trim().isEmpty ? null : _notes.text.trim(),
       nextInvoiceNumber: int.tryParse(_startingNumber.text) ?? 1,
+      emailTemplate: _emailTemplate.text.trim().isEmpty
+          ? BusinessInfo.kDefaultEmailTemplate
+          : _emailTemplate.text.trim(),
     );
 
     await business.saveBusinessInfo(info);
 
-    if (mounted) {
-      if (widget.isFirstTime) {
-        // Navigate to home — the AuthWrapper will rebuild
-      } else {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Business info saved'),
-            behavior: SnackBarBehavior.floating,
-          ),
-        );
-      }
+    if (!mounted) return;
+    if (!widget.isFirstTime) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Instellingen opgeslagen'),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
     }
   }
 
   Future<void> _pickLogo() async {
     final business = context.read<BusinessProvider>();
     final picker = ImagePicker();
-    final file = await picker.pickImage(source: ImageSource.gallery, imageQuality: 80);
+    final file = await picker.pickImage(
+      source: ImageSource.gallery,
+      imageQuality: 60,
+      maxWidth: 600,
+      maxHeight: 300,
+    );
     if (file == null) return;
 
     try {
-      if (kIsWeb) {
-        final bytes = await file.readAsBytes();
-        await business.uploadLogo(bytes);
-      } else {
-        await business.uploadLogo(File(file.path));
-      }
-
+      await business.uploadLogo(file);
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('Logo uploaded'),
+          content: Text('Logo opgeslagen'),
           behavior: SnackBarBehavior.floating,
         ),
       );
@@ -156,7 +152,7 @@ class _BusinessInfoScreenState extends State<BusinessInfoScreen> {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('Upload failed: $e'),
+          content: Text('Fout bij uploaden: $e'),
           behavior: SnackBarBehavior.floating,
           backgroundColor: AppTheme.error,
         ),
@@ -169,13 +165,15 @@ class _BusinessInfoScreenState extends State<BusinessInfoScreen> {
     final business = context.watch<BusinessProvider>();
     if (business.businessInfo != null) _prefill(business.businessInfo!);
 
+    final logoBytes = business.logoBytes;
+
     return Scaffold(
       appBar: widget.isFirstTime
           ? AppBar(
-              title: const Text('Set Up Your Business'),
+              title: const Text('Bedrijfsinstellingen'),
               automaticallyImplyLeading: false,
             )
-          : AppBar(title: const Text('Business Settings')),
+          : AppBar(title: const Text('Instellingen')),
       body: Form(
         key: _formKey,
         child: ListView(
@@ -183,121 +181,127 @@ class _BusinessInfoScreenState extends State<BusinessInfoScreen> {
           children: [
             if (widget.isFirstTime) ...[
               const Text(
-                'Welcome! Let\'s set up your business profile.',
-                style: TextStyle(
-                    fontSize: 16, color: AppTheme.textSecondary),
+                'Welkom! Stel je bedrijfsprofiel in om te beginnen.',
+                style: TextStyle(fontSize: 16, color: AppTheme.textSecondary),
               ),
               const SizedBox(height: 20),
             ],
 
-            // Logo section
-            _SectionHeader(title: 'Business Logo'),
+            // Logo
+            _SectionHeader(title: 'Bedrijfslogo'),
             const SizedBox(height: 12),
             Center(
               child: GestureDetector(
                 onTap: business.isSaving ? null : _pickLogo,
                 child: Container(
-                  width: 120,
-                  height: 120,
+                  width: 140,
+                  height: 80,
                   decoration: BoxDecoration(
                     color: AppTheme.background,
-                    borderRadius: BorderRadius.circular(16),
+                    borderRadius: BorderRadius.circular(12),
                     border: Border.all(color: AppTheme.border, width: 2),
                   ),
                   child: business.isSaving
                       ? const Center(child: CircularProgressIndicator())
-                      : business.businessInfo?.logoUrl != null
+                      : logoBytes != null
                           ? ClipRRect(
-                              borderRadius: BorderRadius.circular(14),
-                              child: Image.network(
-                                business.businessInfo!.logoUrl!,
-                                fit: BoxFit.contain,
-                                loadingBuilder: (_, child, progress) => progress == null
-                                    ? child
-                                    : const Center(child: CircularProgressIndicator()),
-                              ),
+                              borderRadius: BorderRadius.circular(10),
+                              child: Image.memory(logoBytes, fit: BoxFit.contain),
                             )
                           : const Column(
                               mainAxisAlignment: MainAxisAlignment.center,
                               children: [
                                 Icon(Icons.add_photo_alternate_outlined,
-                                    color: AppTheme.textSecondary, size: 32),
+                                    color: AppTheme.textSecondary, size: 28),
                                 SizedBox(height: 4),
-                                Text('Add Logo',
+                                Text('Logo toevoegen',
                                     style: TextStyle(
-                                        color: AppTheme.textSecondary, fontSize: 12)),
+                                        color: AppTheme.textSecondary, fontSize: 11)),
                               ],
                             ),
                 ),
               ),
             ),
-            if (business.businessInfo?.logoUrl != null) ...[
+            if (logoBytes != null) ...[
               const SizedBox(height: 8),
               Center(
                 child: TextButton.icon(
                   onPressed: business.removeLogo,
                   icon: const Icon(Icons.delete_outline, size: 16),
-                  label: const Text('Remove Logo'),
+                  label: const Text('Logo verwijderen'),
                   style: TextButton.styleFrom(foregroundColor: AppTheme.error),
                 ),
               ),
             ],
 
             const SizedBox(height: 20),
-
-            _SectionHeader(title: 'Business Details'),
+            _SectionHeader(title: 'Bedrijfsgegevens'),
             const SizedBox(height: 12),
-            _field(_name, 'Business Name *', required: true),
-            _field(_email, 'Business Email *',
+            _field(_name, 'Bedrijfsnaam *', required: true),
+            _field(_email, 'E-mailadres *',
                 keyboardType: TextInputType.emailAddress, required: true),
-            _field(_phone, 'Phone Number',
-                keyboardType: TextInputType.phone),
+            _field(_phone, 'Telefoonnummer', keyboardType: TextInputType.phone),
             _field(_website, 'Website', keyboardType: TextInputType.url),
 
             const SizedBox(height: 20),
-            _SectionHeader(title: 'Address'),
+            _SectionHeader(title: 'Adres'),
             const SizedBox(height: 12),
-            _field(_address, 'Street Address'),
+            _field(_address, 'Straat en huisnummer'),
             Row(children: [
-              Expanded(child: _field(_city, 'City')),
+              Expanded(child: _field(_city, 'Stad')),
               const SizedBox(width: 12),
-              Expanded(child: _field(_state, 'State / Province')),
+              Expanded(child: _field(_state, 'Provincie')),
             ]),
             Row(children: [
-              Expanded(child: _field(_zip, 'Postal Code')),
+              Expanded(child: _field(_zip, 'Postcode')),
               const SizedBox(width: 12),
-              Expanded(child: _field(_country, 'Country')),
+              Expanded(child: _field(_country, 'Land')),
             ]),
 
             const SizedBox(height: 20),
-            _SectionHeader(title: 'Invoice Settings'),
+            _SectionHeader(title: 'Factuurinstellingen'),
             const SizedBox(height: 12),
             Row(children: [
-              Expanded(child: _field(_currency, 'Currency Symbol',
-                  hint: 'e.g. \$, €, £')),
+              Expanded(child: _field(_currency, 'Valutasymbool', hint: '€')),
               const SizedBox(width: 12),
               Expanded(
-                child: _field(_taxRate, 'Default Tax Rate (%)',
+                child: _field(_taxRate, 'Standaard BTW (%)',
                     keyboardType: TextInputType.number),
               ),
             ]),
             Row(children: [
-              Expanded(child: _field(_invoicePrefix, 'Invoice Prefix',
-                  hint: 'e.g. INV, #')),
+              Expanded(child: _field(_invoicePrefix, 'Factuurnummer prefix',
+                  hint: 'F')),
               const SizedBox(width: 12),
               Expanded(
-                child: _field(_startingNumber, 'Starting Invoice #',
+                child: _field(_startingNumber, 'Beginnnummer',
                     keyboardType: TextInputType.number),
               ),
             ]),
-            _field(_paymentTerms, 'Default Payment Terms',
-                hint: 'e.g. Net 30'),
-            _field(_notes, 'Default Invoice Notes',
+            _field(_notes, 'Standaard opmerkingen',
                 maxLines: 3,
-                hint: 'e.g. Thank you for your business!'),
+                hint: 'Standaard tekst op elke factuur'),
+
+            const SizedBox(height: 20),
+            _SectionHeader(title: 'E-mail sjabloon'),
+            const SizedBox(height: 8),
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: AppTheme.background,
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: AppTheme.border),
+              ),
+              child: const Text(
+                'Beschikbare variabelen:\n'
+                '{naam} · {kenteken} · {kmstand} · {factuur_nummer} · {bedrijfsnaam} · {datum} · {totaal}',
+                style: TextStyle(color: AppTheme.textSecondary, fontSize: 11),
+              ),
+            ),
+            const SizedBox(height: 8),
+            _field(_emailTemplate, 'Sjabloon', maxLines: 8),
 
             const SizedBox(height: 32),
-
             ElevatedButton(
               onPressed: business.isSaving ? null : _save,
               child: business.isSaving
@@ -307,9 +311,8 @@ class _BusinessInfoScreenState extends State<BusinessInfoScreen> {
                       child: CircularProgressIndicator(
                           color: Colors.white, strokeWidth: 2),
                     )
-                  : Text(widget.isFirstTime ? 'Save & Continue' : 'Save Changes'),
+                  : Text(widget.isFirstTime ? 'Opslaan en verder' : 'Wijzigingen opslaan'),
             ),
-
             const SizedBox(height: 24),
           ],
         ),
@@ -331,12 +334,9 @@ class _BusinessInfoScreenState extends State<BusinessInfoScreen> {
           controller: controller,
           keyboardType: keyboardType,
           maxLines: maxLines,
-          decoration: InputDecoration(
-            labelText: label,
-            hintText: hint,
-          ),
+          decoration: InputDecoration(labelText: label, hintText: hint),
           validator: required
-              ? (v) => v == null || v.trim().isEmpty ? 'Required' : null
+              ? (v) => v == null || v.trim().isEmpty ? 'Verplicht veld' : null
               : null,
         ),
       );

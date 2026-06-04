@@ -1,12 +1,12 @@
 import 'dart:async';
+import 'dart:convert';
 import 'package:flutter/foundation.dart';
+import 'package:image_picker/image_picker.dart';
 import '../models/business_info.dart';
 import '../services/firestore_service.dart';
-import '../services/storage_service.dart';
 
 class BusinessProvider extends ChangeNotifier {
   final FirestoreService _firestore = FirestoreService();
-  final StorageService _storage = StorageService();
 
   BusinessInfo? _businessInfo;
   bool _isLoaded = false;
@@ -55,16 +55,16 @@ class BusinessProvider extends ChangeNotifier {
     }
   }
 
-  Future<String?> uploadLogo(dynamic file) async {
-    if (_userId == null) return null;
+  /// Converts the picked image to a base64 string and saves it directly
+  /// in Firestore — no Firebase Storage needed.
+  Future<void> uploadLogo(XFile file) async {
+    if (_userId == null) return;
     _isSaving = true;
     notifyListeners();
     try {
-      final url = await _storage.uploadLogo(_userId!, file);
-      // Always persist the URL — merge write leaves all other fields intact
-      // whether or not the full business document has been saved yet.
-      await _firestore.saveLogoUrl(_userId!, url);
-      return url;
+      final bytes = await file.readAsBytes();
+      final base64str = base64Encode(bytes);
+      await _firestore.saveLogoUrl(_userId!, base64str);
     } finally {
       _isSaving = false;
       notifyListeners();
@@ -72,28 +72,18 @@ class BusinessProvider extends ChangeNotifier {
   }
 
   Future<void> removeLogo() async {
-    if (_userId == null || _businessInfo == null) return;
-    await _storage.deleteLogo(_userId!);
-    final updated = BusinessInfo(
-      id: _businessInfo!.id,
-      name: _businessInfo!.name,
-      address: _businessInfo!.address,
-      city: _businessInfo!.city,
-      state: _businessInfo!.state,
-      zip: _businessInfo!.zip,
-      country: _businessInfo!.country,
-      phone: _businessInfo!.phone,
-      email: _businessInfo!.email,
-      website: _businessInfo!.website,
-      logoUrl: null,
-      nextInvoiceNumber: _businessInfo!.nextInvoiceNumber,
-      currency: _businessInfo!.currency,
-      defaultTaxRate: _businessInfo!.defaultTaxRate,
-      invoicePrefix: _businessInfo!.invoicePrefix,
-      defaultPaymentTerms: _businessInfo!.defaultPaymentTerms,
-      defaultNotes: _businessInfo!.defaultNotes,
-    );
-    await _firestore.saveBusinessInfo(_userId!, updated);
+    if (_userId == null) return;
+    await _firestore.saveLogoUrl(_userId!, null);
+  }
+
+  Uint8List? get logoBytes {
+    final b64 = _businessInfo?.logoBase64;
+    if (b64 == null || b64.isEmpty) return null;
+    try {
+      return base64Decode(b64);
+    } catch (_) {
+      return null;
+    }
   }
 
   @override
