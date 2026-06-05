@@ -166,7 +166,10 @@ class _CreateInvoiceScreenState extends State<CreateInvoiceScreen> {
           Expanded(
             child: SingleChildScrollView(
               padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
-              child: _buildStepContent(),
+              child: SizedBox(
+                width: double.infinity,
+                child: _buildStepContent(),
+              ),
             ),
           ),
           _buildNavBar(),
@@ -210,40 +213,37 @@ class _CreateInvoiceScreenState extends State<CreateInvoiceScreen> {
   }
 
   Widget _buildNavBar() {
-    // On step 2 the continue button lives inside _DetailsStep itself,
-    // so the nav bar only shows the back button.
-    if (_step == 2) {
-      return Padding(
-        padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
-        child: Align(
-          alignment: Alignment.centerLeft,
-          child: OutlinedButton(
-            onPressed: () => setState(() => _step--),
-            child: const Text('Terug'),
+    return Material(
+      color: Colors.white,
+      elevation: 0,
+      child: SafeArea(
+        top: false,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
+          child: Row(
+            children: [
+              Expanded(
+                child: _step > 0
+                    ? OutlinedButton(
+                        onPressed: _saving
+                            ? null
+                            : () => setState(() => _step--),
+                        child: const Text('Terug'),
+                      )
+                    : const SizedBox(height: 48),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: _step < 2
+                    ? ElevatedButton(
+                        onPressed: _saving ? null : _next,
+                        child: const Text('Volgende'),
+                      )
+                    : const SizedBox(height: 48),
+              ),
+            ],
           ),
         ),
-      );
-    }
-
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
-      child: Row(
-        children: [
-          if (_step > 0)
-            OutlinedButton(
-              onPressed: () => setState(() => _step--),
-              child: const Text('Terug'),
-            ),
-          Expanded(
-            child: Align(
-              alignment: Alignment.centerRight,
-              child: ElevatedButton(
-                onPressed: _saving ? null : _next,
-                child: const Text('Volgende'),
-              ),
-            ),
-          ),
-        ],
       ),
     );
   }
@@ -268,78 +268,74 @@ class _StepHeader extends StatelessWidget {
       color: Colors.white,
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
       child: Row(
-        children: List.generate(labels.length, (i) {
+        children: List.generate(labels.length * 2 - 1, (index) {
+          // Even indices = step chip, odd indices = connector line
+          if (index.isOdd) {
+            final i = index ~/ 2;
+            return Expanded(
+              child: Container(
+                height: 1.5,
+                margin: const EdgeInsets.symmetric(horizontal: 6),
+                color: i < current ? AppTheme.primary : AppTheme.border,
+              ),
+            );
+          }
+
+          final i = index ~/ 2;
           final done = i < current;
           final active = i == current;
-          return Expanded(
-            child: GestureDetector(
-              onTap: () => onTap(i),
-              behavior: HitTestBehavior.opaque,
-              child: Row(
-                children: [
-                  Container(
-                    width: 26,
-                    height: 26,
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
+
+          return GestureDetector(
+            onTap: () => onTap(i),
+            behavior: HitTestBehavior.opaque,
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  width: 26,
+                  height: 26,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: done || active
+                        ? AppTheme.primary
+                        : Colors.transparent,
+                    border: Border.all(
                       color: done || active
                           ? AppTheme.primary
-                          : Colors.transparent,
-                      border: Border.all(
-                        color: done || active
-                            ? AppTheme.primary
-                            : AppTheme.textSecondary,
-                        width: 1.5,
-                      ),
+                          : AppTheme.textSecondary,
+                      width: 1.5,
                     ),
-                    child: Center(
-                      child: done
-                          ? const Icon(
-                              Icons.check,
-                              size: 14,
-                              color: Colors.white,
-                            )
-                          : Text(
-                              '${i + 1}',
-                              style: TextStyle(
-                                fontSize: 12,
-                                fontWeight: FontWeight.w700,
-                                color: active
-                                    ? Colors.white
-                                    : AppTheme.textSecondary,
-                              ),
+                  ),
+                  child: Center(
+                    child: done
+                        ? const Icon(Icons.check, size: 14, color: Colors.white)
+                        : Text(
+                            '${i + 1}',
+                            style: TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w700,
+                              color: active
+                                  ? Colors.white
+                                  : AppTheme.textSecondary,
                             ),
-                    ),
+                          ),
                   ),
-                  const SizedBox(width: 6),
-                  Flexible(
-                    child: Text(
-                      labels[i],
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        fontSize: 12,
-                        fontWeight: active
-                            ? FontWeight.w700
-                            : FontWeight.normal,
-                        color: active
-                            ? AppTheme.primary
-                            : done
-                            ? AppTheme.textPrimary
-                            : AppTheme.textSecondary,
-                      ),
-                    ),
+                ),
+                const SizedBox(width: 6),
+                Text(
+                  labels[i],
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: active ? FontWeight.w700 : FontWeight.normal,
+                    color: active
+                        ? AppTheme.primary
+                        : done
+                        ? AppTheme.textPrimary
+                        : AppTheme.textSecondary,
                   ),
-                  if (i < labels.length - 1) ...[
-                    const SizedBox(width: 4),
-                    Expanded(
-                      child: Container(
-                        height: 1.5,
-                        color: i < current ? AppTheme.primary : AppTheme.border,
-                      ),
-                    ),
-                  ],
-                ],
-              ),
+                ),
+              ],
             ),
           );
         }),
@@ -387,9 +383,9 @@ class _ClientStepState extends State<_ClientStep> {
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addPostFrameCallback(
-      (_) { if (mounted) _naamFocus.requestFocus(); },
-    );
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _naamFocus.requestFocus();
+    });
   }
 
   @override
@@ -408,21 +404,30 @@ class _ClientStepState extends State<_ClientStep> {
       key: widget.formKey,
       child: Column(
         children: [
-          _tf(widget.naam, 'Naam *',
-              required: true,
-              focusNode: _naamFocus,
-              nextFocus: _kenterkenFocus),
+          _tf(
+            widget.naam,
+            'Naam *',
+            required: true,
+            focusNode: _naamFocus,
+            nextFocus: _kenterkenFocus,
+          ),
           const SizedBox(height: 12),
-          _tf(widget.kenteken, 'Kenteken *',
-              required: true,
-              focusNode: _kenterkenFocus,
-              nextFocus: _kmstandFocus),
+          _tf(
+            widget.kenteken,
+            'Kenteken *',
+            required: true,
+            focusNode: _kenterkenFocus,
+            nextFocus: _kmstandFocus,
+          ),
           const SizedBox(height: 12),
-          _tf(widget.kmstand, 'Km-stand *',
-              required: true,
-              type: TextInputType.number,
-              focusNode: _kmstandFocus,
-              nextFocus: _adresFocus),
+          _tf(
+            widget.kmstand,
+            'Km-stand *',
+            required: true,
+            type: TextInputType.number,
+            focusNode: _kmstandFocus,
+            nextFocus: _adresFocus,
+          ),
           const SizedBox(height: 12),
           GestureDetector(
             onTap: () async {
@@ -447,13 +452,19 @@ class _ClientStepState extends State<_ClientStep> {
             ),
           ),
           const SizedBox(height: 12),
-          _tf(widget.adres, 'Adres (optioneel)',
-              focusNode: _adresFocus,
-              nextFocus: _telefoonnummerFocus),
+          _tf(
+            widget.adres,
+            'Adres (optioneel)',
+            focusNode: _adresFocus,
+            nextFocus: _telefoonnummerFocus,
+          ),
           const SizedBox(height: 12),
-          _tf(widget.telefoonnummer, 'Telefoonnummer (optioneel)',
-              type: TextInputType.phone,
-              focusNode: _telefoonnummerFocus),
+          _tf(
+            widget.telefoonnummer,
+            'Telefoonnummer (optioneel)',
+            type: TextInputType.phone,
+            focusNode: _telefoonnummerFocus,
+          ),
         ],
       ),
     );
@@ -470,12 +481,12 @@ class _ClientStepState extends State<_ClientStep> {
     controller: c,
     keyboardType: type,
     focusNode: focusNode,
-    textInputAction:
-        nextFocus != null ? TextInputAction.next : TextInputAction.done,
-    onFieldSubmitted:
-        nextFocus != null
-            ? (_) => FocusScope.of(context).requestFocus(nextFocus)
-            : null,
+    textInputAction: nextFocus != null
+        ? TextInputAction.next
+        : TextInputAction.done,
+    onFieldSubmitted: nextFocus != null
+        ? (_) => FocusScope.of(context).requestFocus(nextFocus)
+        : null,
     decoration: InputDecoration(labelText: label),
     validator: required
         ? (v) => v == null || v.trim().isEmpty ? 'Verplicht' : null
@@ -871,9 +882,9 @@ class _ItemFormSheetState extends State<_ItemFormSheet> {
     _prijs = TextEditingController(
       text: widget.item?.prijsExBtw.toStringAsFixed(2) ?? '',
     );
-    WidgetsBinding.instance.addPostFrameCallback(
-      (_) { if (mounted) _omschrijvingFocus.requestFocus(); },
-    );
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _omschrijvingFocus.requestFocus();
+    });
   }
 
   @override
@@ -1079,22 +1090,19 @@ class _DetailsStep extends StatelessWidget {
           maxLines: 4,
         ),
         const SizedBox(height: 24),
-        SizedBox(
-          width: double.infinity,
-          child: ElevatedButton.icon(
-            onPressed: saving ? null : onSubmit,
-            icon: saving
-                ? const SizedBox(
-                    width: 18,
-                    height: 18,
-                    child: CircularProgressIndicator(
-                      color: Colors.white,
-                      strokeWidth: 2,
-                    ),
-                  )
-                : const Icon(Icons.visibility_outlined, size: 18),
-            label: Text(saving ? 'Bezig...' : 'Factuur bekijken'),
-          ),
+        ElevatedButton.icon(
+          onPressed: saving ? null : onSubmit,
+          icon: saving
+              ? const SizedBox(
+                  width: 18,
+                  height: 18,
+                  child: CircularProgressIndicator(
+                    color: Colors.white,
+                    strokeWidth: 2,
+                  ),
+                )
+              : const Icon(Icons.visibility_outlined, size: 18),
+          label: Text(saving ? 'Bezig...' : 'Factuur bekijken'),
         ),
         const SizedBox(height: 8),
       ],
