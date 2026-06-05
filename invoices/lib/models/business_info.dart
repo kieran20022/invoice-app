@@ -7,7 +7,8 @@ class BusinessInfo {
   final String zip;
   final String country;
   final String phone;
-  final String email;
+  final String kvk;
+  final String iban;
   final String website;
   final String? logoBase64;
   final int nextInvoiceNumber;
@@ -26,7 +27,8 @@ class BusinessInfo {
     this.zip = '',
     this.country = '',
     this.phone = '',
-    required this.email,
+    this.kvk = '',
+    this.iban = '',
     this.website = '',
     this.logoBase64,
     this.nextInvoiceNumber = 1,
@@ -39,7 +41,7 @@ class BusinessInfo {
 
   static const kDefaultEmailTemplate =
       'Beste {naam},\n\n'
-      'Bijgevoegd vindt u factuur {factuur_nummer} voor het voertuig met kenteken {kenteken} (Km-stand: {kmstand}).\n\n'
+      'Bijgevoegd vindt u factuur {factuur_nummer} {voertuig_info}.\n\n'
       'Heeft u vragen over deze factuur? Neem dan gerust contact met ons op.\n\n'
       'Met vriendelijke groet,\n'
       '{bedrijfsnaam}';
@@ -60,7 +62,8 @@ class BusinessInfo {
         'zip': zip,
         'country': country,
         'phone': phone,
-        'email': email,
+        'kvk': kvk,
+        'iban': iban,
         'website': website,
         'logoBase64': logoBase64,
         'nextInvoiceNumber': nextInvoiceNumber,
@@ -80,7 +83,8 @@ class BusinessInfo {
         zip: map['zip'] ?? '',
         country: map['country'] ?? '',
         phone: map['phone'] ?? '',
-        email: map['email'] ?? '',
+        kvk: map['kvk'] ?? map['email'] ?? '',
+        iban: map['iban'] ?? '',
         website: map['website'] ?? '',
         logoBase64: map['logoBase64'],
         nextInvoiceNumber: map['nextInvoiceNumber'] ?? 1,
@@ -99,7 +103,8 @@ class BusinessInfo {
     String? zip,
     String? country,
     String? phone,
-    String? email,
+    String? kvk,
+    String? iban,
     String? website,
     String? logoBase64,
     bool clearLogo = false,
@@ -119,7 +124,8 @@ class BusinessInfo {
         zip: zip ?? this.zip,
         country: country ?? this.country,
         phone: phone ?? this.phone,
-        email: email ?? this.email,
+        kvk: kvk ?? this.kvk,
+        iban: iban ?? this.iban,
         website: website ?? this.website,
         logoBase64: clearLogo ? null : (logoBase64 ?? this.logoBase64),
         nextInvoiceNumber: nextInvoiceNumber ?? this.nextInvoiceNumber,

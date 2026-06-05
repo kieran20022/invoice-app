@@ -10,6 +10,8 @@ import '../../providers/invoice_provider.dart';
 import '../../providers/product_provider.dart';
 import 'invoice_preview_screen.dart';
 
+enum Caps { none, first, words, all }
+
 class CreateInvoiceScreen extends StatefulWidget {
   const CreateInvoiceScreen({super.key});
 
@@ -30,6 +32,7 @@ class _CreateInvoiceScreenState extends State<CreateInvoiceScreen> {
   final _datumCtrl = TextEditingController();
   final _adres = TextEditingController();
   final _telefoonnummer = TextEditingController();
+  final _productType = TextEditingController();
   DateTime _datum = DateTime.now();
 
   // Details fields
@@ -59,7 +62,7 @@ class _CreateInvoiceScreenState extends State<CreateInvoiceScreen> {
       _currency.text = business.currency;
     } else {
       context.read<InvoiceProvider>().startNewDraft(
-        BusinessInfo(id: '', name: '', email: ''),
+        BusinessInfo(id: '', name: '', kvk: '', iban: ''),
       );
       _taxRate.text = '21';
       _currency.text = '€';
@@ -75,6 +78,7 @@ class _CreateInvoiceScreenState extends State<CreateInvoiceScreen> {
       _datumCtrl,
       _adres,
       _telefoonnummer,
+      _productType,
       _notes,
       _taxRate,
       _currency,
@@ -90,6 +94,7 @@ class _CreateInvoiceScreenState extends State<CreateInvoiceScreen> {
       context.read<InvoiceProvider>().updateDraftClient(
         naam: _naam.text.trim(),
         kenteken: _kenteken.text.trim(),
+        productType: _productType.text.trim(),
         kmstand: _kmstand.text.trim(),
         datum: _datumCtrl.text.trim(),
         adres: _adres.text.trim(),
@@ -139,6 +144,44 @@ class _CreateInvoiceScreenState extends State<CreateInvoiceScreen> {
     }
   }
 
+  void _showProductPicker() {
+    final products = context.read<ProductProvider>().products;
+    if (products.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Geen opgeslagen producten. Voeg ze toe via het Producten tabblad.',
+          ),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+      return;
+    }
+    showModalBottomSheet(
+      context: context,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (ctx) => _ProductPickerSheet(products: products),
+    );
+  }
+
+  void _showItemForm({InvoiceItem? item}) {
+    final draft = context.read<InvoiceProvider>().draft;
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (ctx) => _ItemFormSheet(
+        item: item,
+        taxRate: draft?.taxRate ?? 21.0,
+        currency: draft?.currency ?? '€',
+      ),
+    );
+  }
+
   static const _stepLabels = ['Klantgegevens', 'Producten', 'Details'];
 
   @override
@@ -185,6 +228,7 @@ class _CreateInvoiceScreenState extends State<CreateInvoiceScreen> {
           formKey: _clientFormKey,
           naam: _naam,
           kenteken: _kenteken,
+          productType: _productType,
           kmstand: _kmstand,
           datumCtrl: _datumCtrl,
           adres: _adres,
@@ -198,14 +242,12 @@ class _CreateInvoiceScreenState extends State<CreateInvoiceScreen> {
           },
         );
       case 1:
-        return const _ItemsStep();
+        return _ItemsStep(onEditItem: (item) => _showItemForm(item: item));
       case 2:
         return _DetailsStep(
           notes: _notes,
           taxRate: _taxRate,
           currency: _currency,
-          onSubmit: _next,
-          saving: _saving,
         );
       default:
         return const SizedBox.shrink();
@@ -213,6 +255,9 @@ class _CreateInvoiceScreenState extends State<CreateInvoiceScreen> {
   }
 
   Widget _buildNavBar() {
+    final isLast = _step == 2;
+    final isItems = _step == 1;
+
     return Material(
       color: Colors.white,
       elevation: 0,
@@ -220,32 +265,102 @@ class _CreateInvoiceScreenState extends State<CreateInvoiceScreen> {
         top: false,
         child: Padding(
           padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
-          child: Row(
-            children: [
-              Expanded(
-                child: _step > 0
-                    ? OutlinedButton(
-                        onPressed: _saving
-                            ? null
-                            : () => setState(() => _step--),
-                        child: const Text('Terug'),
-                      )
-                    : const SizedBox(height: 48),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: _step < 2
-                    ? ElevatedButton(
+          child: isItems
+              ? Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                  children: [
+                    _navIconBtn(
+                      icon: Icons.arrow_back,
+                      onPressed: _saving ? null : () => setState(() => _step--),
+                      filled: false,
+                    ),
+                    _navIconBtn(
+                      icon: Icons.inventory_2_outlined,
+                      onPressed: _saving ? null : _showProductPicker,
+                      filled: false,
+                    ),
+                    _navIconBtn(
+                      icon: Icons.add,
+                      onPressed: _saving ? null : () => _showItemForm(),
+                      filled: false,
+                    ),
+                    _navIconBtn(
+                      icon: Icons.arrow_forward,
+                      onPressed: _saving ? null : _next,
+                      filled: true,
+                    ),
+                  ],
+                )
+              : Row(
+                  children: [
+                    Expanded(
+                      child: _step > 0
+                          ? OutlinedButton(
+                              onPressed: _saving
+                                  ? null
+                                  : () => setState(() => _step--),
+                              child: const Text('Terug'),
+                            )
+                          : const SizedBox(height: 48),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: ElevatedButton.icon(
                         onPressed: _saving ? null : _next,
-                        child: const Text('Volgende'),
-                      )
-                    : const SizedBox(height: 48),
-              ),
-            ],
-          ),
+                        icon: _saving
+                            ? const SizedBox(
+                                width: 18,
+                                height: 18,
+                                child: CircularProgressIndicator(
+                                  color: Colors.white,
+                                  strokeWidth: 2,
+                                ),
+                              )
+                            : Icon(
+                                isLast
+                                    ? Icons.visibility_outlined
+                                    : Icons.arrow_forward,
+                                size: 18,
+                              ),
+                        label: Text(
+                          _saving
+                              ? 'Bezig...'
+                              : isLast
+                              ? 'Naar Factuur'
+                              : 'Volgende',
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
         ),
       ),
     );
+  }
+
+  Widget _navIconBtn({
+    required IconData icon,
+    required VoidCallback? onPressed,
+    required bool filled,
+  }) {
+    const size = Size(56, 48);
+    return filled
+        ? ElevatedButton(
+            onPressed: onPressed,
+            style: ElevatedButton.styleFrom(
+              minimumSize: size,
+              padding: EdgeInsets.zero,
+            ),
+            child: Icon(icon, size: 20),
+          )
+        : OutlinedButton(
+            onPressed: onPressed,
+            style: OutlinedButton.styleFrom(
+              minimumSize: size,
+              padding: EdgeInsets.zero,
+            ),
+            child: Icon(icon, size: 20),
+          );
   }
 }
 
@@ -353,7 +468,8 @@ class _ClientStep extends StatefulWidget {
       kmstand,
       datumCtrl,
       adres,
-      telefoonnummer;
+      telefoonnummer,
+      productType;
   final DateTime datum;
   final ValueChanged<DateTime> onDatumChanged;
 
@@ -365,6 +481,7 @@ class _ClientStep extends StatefulWidget {
     required this.datumCtrl,
     required this.adres,
     required this.telefoonnummer,
+    required this.productType,
     required this.datum,
     required this.onDatumChanged,
   });
@@ -376,6 +493,7 @@ class _ClientStep extends StatefulWidget {
 class _ClientStepState extends State<_ClientStep> {
   final _naamFocus = FocusNode();
   final _kenterkenFocus = FocusNode();
+  final _productTypeFocus = FocusNode();
   final _kmstandFocus = FocusNode();
   final _adresFocus = FocusNode();
   final _telefoonnummerFocus = FocusNode();
@@ -392,6 +510,7 @@ class _ClientStepState extends State<_ClientStep> {
   void dispose() {
     _naamFocus.dispose();
     _kenterkenFocus.dispose();
+    _productTypeFocus.dispose();
     _kmstandFocus.dispose();
     _adresFocus.dispose();
     _telefoonnummerFocus.dispose();
@@ -410,20 +529,44 @@ class _ClientStepState extends State<_ClientStep> {
             required: true,
             focusNode: _naamFocus,
             nextFocus: _kenterkenFocus,
+            caps: Caps.words,
           ),
           const SizedBox(height: 12),
-          _tf(
-            widget.kenteken,
-            'Kenteken *',
-            required: true,
-            focusNode: _kenterkenFocus,
-            nextFocus: _kmstandFocus,
+          AnimatedBuilder(
+            animation: Listenable.merge([widget.kenteken, widget.productType]),
+            builder: (context, _) {
+              final hasKenteken = widget.kenteken.text.trim().isNotEmpty;
+              final hasProductType = widget.productType.text.trim().isNotEmpty;
+              return Column(
+                children: [
+                  _tf(
+                    widget.kenteken,
+                    'Kenteken',
+                    required: false,
+                    focusNode: _kenterkenFocus,
+                    nextFocus: _productTypeFocus,
+                    caps: Caps.all,
+                    enabled: !hasProductType,
+                  ),
+                  const SizedBox(height: 12),
+                  _tf(
+                    widget.productType,
+                    'Product Type',
+                    required: false,
+                    focusNode: _productTypeFocus,
+                    nextFocus: _kmstandFocus,
+                    caps: Caps.first,
+                    enabled: !hasKenteken,
+                  ),
+                ],
+              );
+            },
           ),
           const SizedBox(height: 12),
           _tf(
             widget.kmstand,
-            'Km-stand *',
-            required: true,
+            'Km-stand',
+            required: false,
             type: TextInputType.number,
             focusNode: _kmstandFocus,
             nextFocus: _adresFocus,
@@ -457,6 +600,7 @@ class _ClientStepState extends State<_ClientStep> {
             'Adres (optioneel)',
             focusNode: _adresFocus,
             nextFocus: _telefoonnummerFocus,
+            caps: Caps.first,
           ),
           const SizedBox(height: 12),
           _tf(
@@ -474,13 +618,22 @@ class _ClientStepState extends State<_ClientStep> {
     TextEditingController c,
     String label, {
     bool required = false,
+    bool enabled = true,
     TextInputType? type,
     FocusNode? focusNode,
     FocusNode? nextFocus,
+    Caps caps = Caps.none,
   }) => TextFormField(
     controller: c,
+    enabled: enabled,
     keyboardType: type,
     focusNode: focusNode,
+    textCapitalization: switch (caps) {
+      Caps.none => TextCapitalization.none,
+      Caps.first => TextCapitalization.sentences,
+      Caps.words => TextCapitalization.words,
+      Caps.all => TextCapitalization.characters,
+    },
     textInputAction: nextFocus != null
         ? TextInputAction.next
         : TextInputAction.done,
@@ -497,7 +650,9 @@ class _ClientStepState extends State<_ClientStep> {
 // ── Stap 2: Producten ─────────────────────────────────────────────────────────
 
 class _ItemsStep extends StatelessWidget {
-  const _ItemsStep();
+  final ValueChanged<InvoiceItem> onEditItem;
+
+  const _ItemsStep({required this.onEditItem});
 
   @override
   Widget build(BuildContext context) {
@@ -530,7 +685,7 @@ class _ItemsStep extends StatelessWidget {
               item: item,
               currency: currency,
               taxRate: taxRate,
-              onEdit: () => _showItemForm(context, item: item),
+              onEdit: () => onEditItem(item),
               onDelete: () =>
                   context.read<InvoiceProvider>().removeDraftItem(item.id),
               onQtyChanged: (qty) => context
@@ -539,9 +694,8 @@ class _ItemsStep extends StatelessWidget {
             ),
           ),
 
-        const SizedBox(height: 12),
-
         if (items.isNotEmpty) ...[
+          const SizedBox(height: 12),
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
             decoration: BoxDecoration(
@@ -569,62 +723,8 @@ class _ItemsStep extends StatelessWidget {
               ],
             ),
           ),
-          const SizedBox(height: 12),
         ],
-
-        Row(
-          children: [
-            Expanded(
-              child: OutlinedButton.icon(
-                onPressed: () => _showProductPicker(context),
-                icon: const Icon(Icons.inventory_2_outlined, size: 18),
-                label: const Text('Uit producten'),
-              ),
-            ),
-            const SizedBox(width: 10),
-            Expanded(
-              child: OutlinedButton.icon(
-                onPressed: () => _showItemForm(context),
-                icon: const Icon(Icons.add, size: 18),
-                label: const Text('Aangepaste Product'),
-              ),
-            ),
-          ],
-        ),
       ],
-    );
-  }
-
-  void _showProductPicker(BuildContext context) {
-    final products = context.read<ProductProvider>().products;
-    if (products.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text(
-            'Geen opgeslagen producten. Voeg ze toe via het Producten tabblad.',
-          ),
-          behavior: SnackBarBehavior.floating,
-        ),
-      );
-      return;
-    }
-    showModalBottomSheet(
-      context: context,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      builder: (ctx) => _ProductPickerSheet(products: products),
-    );
-  }
-
-  void _showItemForm(BuildContext context, {InvoiceItem? item}) {
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      builder: (ctx) => _ItemFormSheet(item: item),
     );
   }
 }
@@ -854,7 +954,13 @@ class _ProductPickerSheet extends StatelessWidget {
 
 class _ItemFormSheet extends StatefulWidget {
   final InvoiceItem? item;
-  const _ItemFormSheet({this.item});
+  final double taxRate;
+  final String currency;
+  const _ItemFormSheet({
+    this.item,
+    required this.taxRate,
+    required this.currency,
+  });
 
   @override
   State<_ItemFormSheet> createState() => _ItemFormSheetState();
@@ -864,11 +970,14 @@ class _ItemFormSheetState extends State<_ItemFormSheet> {
   final _formKey = GlobalKey<FormState>();
   late final TextEditingController _omschrijving;
   late final TextEditingController _aantal;
-  late final TextEditingController _prijs;
+  late final TextEditingController _prijsExcl;
+  late final TextEditingController _prijsIncl;
+  bool _updatingPrice = false;
 
   final _omschrijvingFocus = FocusNode();
   final _aantalFocus = FocusNode();
-  final _prijsFocus = FocusNode();
+  final _prijsExclFocus = FocusNode();
+  final _prijsInclFocus = FocusNode();
 
   @override
   void initState() {
@@ -879,22 +988,59 @@ class _ItemFormSheetState extends State<_ItemFormSheet> {
     _aantal = TextEditingController(
       text: widget.item?.aantal.toString() ?? '1',
     );
-    _prijs = TextEditingController(
-      text: widget.item?.prijsExBtw.toStringAsFixed(2) ?? '',
+
+    final excl = widget.item?.prijsExBtw;
+    _prijsExcl = TextEditingController(
+      text: excl != null ? excl.toStringAsFixed(2) : '',
     );
+    _prijsIncl = TextEditingController(
+      text: excl != null
+          ? (excl * (1 + widget.taxRate / 100)).toStringAsFixed(2)
+          : '',
+    );
+
+    _prijsExcl.addListener(_onExclChanged);
+    _prijsIncl.addListener(_onInclChanged);
+
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) _omschrijvingFocus.requestFocus();
     });
+  }
+
+  void _onExclChanged() {
+    if (_updatingPrice) return;
+    _updatingPrice = true;
+    final excl = double.tryParse(_prijsExcl.text);
+    if (excl != null) {
+      _prijsIncl.text = (excl * (1 + widget.taxRate / 100)).toStringAsFixed(2);
+    } else if (_prijsExcl.text.isEmpty) {
+      _prijsIncl.text = '';
+    }
+    _updatingPrice = false;
+  }
+
+  void _onInclChanged() {
+    if (_updatingPrice) return;
+    _updatingPrice = true;
+    final incl = double.tryParse(_prijsIncl.text);
+    if (incl != null) {
+      _prijsExcl.text = (incl / (1 + widget.taxRate / 100)).toStringAsFixed(2);
+    } else if (_prijsIncl.text.isEmpty) {
+      _prijsExcl.text = '';
+    }
+    _updatingPrice = false;
   }
 
   @override
   void dispose() {
     _omschrijving.dispose();
     _aantal.dispose();
-    _prijs.dispose();
+    _prijsExcl.dispose();
+    _prijsIncl.dispose();
     _omschrijvingFocus.dispose();
     _aantalFocus.dispose();
-    _prijsFocus.dispose();
+    _prijsExclFocus.dispose();
+    _prijsInclFocus.dispose();
     super.dispose();
   }
 
@@ -906,7 +1052,7 @@ class _ItemFormSheetState extends State<_ItemFormSheet> {
         widget.item!.copyWith(
           omschrijving: _omschrijving.text.trim(),
           aantal: double.tryParse(_aantal.text) ?? 1,
-          prijsExBtw: double.tryParse(_prijs.text) ?? 0,
+          prijsExBtw: double.tryParse(_prijsExcl.text) ?? 0,
         ),
       );
     } else {
@@ -914,7 +1060,7 @@ class _ItemFormSheetState extends State<_ItemFormSheet> {
         provider.createItem(
           omschrijving: _omschrijving.text.trim(),
           aantal: double.tryParse(_aantal.text) ?? 1,
-          prijsExBtw: double.tryParse(_prijs.text) ?? 0,
+          prijsExBtw: double.tryParse(_prijsExcl.text) ?? 0,
         ),
       );
     }
@@ -923,9 +1069,6 @@ class _ItemFormSheetState extends State<_ItemFormSheet> {
 
   @override
   Widget build(BuildContext context) {
-    final currency = context.read<InvoiceProvider>().draft?.currency ?? '€';
-    final taxRate = context.read<InvoiceProvider>().draft?.taxRate ?? 21.0;
-
     return Padding(
       padding: EdgeInsets.only(
         left: 20,
@@ -961,6 +1104,7 @@ class _ItemFormSheetState extends State<_ItemFormSheet> {
               controller: _omschrijving,
               focusNode: _omschrijvingFocus,
               textInputAction: TextInputAction.next,
+              textCapitalization: TextCapitalization.sentences,
               onFieldSubmitted: (_) =>
                   FocusScope.of(context).requestFocus(_aantalFocus),
               decoration: const InputDecoration(labelText: 'Omschrijving *'),
@@ -968,17 +1112,37 @@ class _ItemFormSheetState extends State<_ItemFormSheet> {
                   v == null || v.trim().isEmpty ? 'Verplicht' : null,
             ),
             const SizedBox(height: 12),
+            TextFormField(
+              controller: _aantal,
+              focusNode: _aantalFocus,
+              textInputAction: TextInputAction.next,
+              onFieldSubmitted: (_) =>
+                  FocusScope.of(context).requestFocus(_prijsExclFocus),
+              decoration: const InputDecoration(labelText: 'Aantal *'),
+              keyboardType: TextInputType.number,
+              validator: (v) {
+                if (v == null || v.isEmpty) return 'Verplicht';
+                if (double.tryParse(v) == null) return 'Ongeldig';
+                return null;
+              },
+            ),
+            const SizedBox(height: 12),
             Row(
               children: [
                 Expanded(
                   child: TextFormField(
-                    controller: _aantal,
-                    focusNode: _aantalFocus,
+                    controller: _prijsExcl,
+                    focusNode: _prijsExclFocus,
                     textInputAction: TextInputAction.next,
                     onFieldSubmitted: (_) =>
-                        FocusScope.of(context).requestFocus(_prijsFocus),
-                    decoration: const InputDecoration(labelText: 'Aantal *'),
-                    keyboardType: TextInputType.number,
+                        FocusScope.of(context).requestFocus(_prijsInclFocus),
+                    decoration: InputDecoration(
+                      labelText: 'Prijs ex. BTW *',
+                      prefixText: '${widget.currency} ',
+                    ),
+                    keyboardType: const TextInputType.numberWithOptions(
+                      decimal: true,
+                    ),
                     validator: (v) {
                       if (v == null || v.isEmpty) return 'Verplicht';
                       if (double.tryParse(v) == null) return 'Ongeldig';
@@ -989,41 +1153,20 @@ class _ItemFormSheetState extends State<_ItemFormSheet> {
                 const SizedBox(width: 12),
                 Expanded(
                   child: TextFormField(
-                    controller: _prijs,
-                    focusNode: _prijsFocus,
+                    controller: _prijsIncl,
+                    focusNode: _prijsInclFocus,
                     textInputAction: TextInputAction.done,
                     onFieldSubmitted: (_) => _save(),
                     decoration: InputDecoration(
-                      labelText: 'Prijs ex. BTW *',
-                      prefixText: '$currency ',
+                      labelText: 'Prijs incl. BTW',
+                      prefixText: '${widget.currency} ',
                     ),
-                    keyboardType: TextInputType.number,
-                    validator: (v) {
-                      if (v == null || v.isEmpty) return 'Verplicht';
-                      if (double.tryParse(v) == null) return 'Ongeldig';
-                      return null;
-                    },
+                    keyboardType: const TextInputType.numberWithOptions(
+                      decimal: true,
+                    ),
                   ),
                 ),
               ],
-            ),
-            const SizedBox(height: 8),
-            ValueListenableBuilder<TextEditingValue>(
-              valueListenable: _prijs,
-              builder: (context, value, _) {
-                final ex = double.tryParse(value.text) ?? 0;
-                final incl = ex * (1 + taxRate / 100);
-                return Align(
-                  alignment: Alignment.centerRight,
-                  child: Text(
-                    'Incl. BTW: $currency${incl.toStringAsFixed(2)}',
-                    style: const TextStyle(
-                      color: AppTheme.textSecondary,
-                      fontSize: 12,
-                    ),
-                  ),
-                );
-              },
             ),
             const SizedBox(height: 20),
             SizedBox(
@@ -1044,15 +1187,11 @@ class _ItemFormSheetState extends State<_ItemFormSheet> {
 
 class _DetailsStep extends StatelessWidget {
   final TextEditingController notes, taxRate, currency;
-  final VoidCallback onSubmit;
-  final bool saving;
 
   const _DetailsStep({
     required this.notes,
     required this.taxRate,
     required this.currency,
-    required this.onSubmit,
-    required this.saving,
   });
 
   @override
@@ -1088,21 +1227,6 @@ class _DetailsStep extends StatelessWidget {
             hintText: 'Eventuele opmerkingen bij de factuur',
           ),
           maxLines: 4,
-        ),
-        const SizedBox(height: 24),
-        ElevatedButton.icon(
-          onPressed: saving ? null : onSubmit,
-          icon: saving
-              ? const SizedBox(
-                  width: 18,
-                  height: 18,
-                  child: CircularProgressIndicator(
-                    color: Colors.white,
-                    strokeWidth: 2,
-                  ),
-                )
-              : const Icon(Icons.visibility_outlined, size: 18),
-          label: Text(saving ? 'Bezig...' : 'Factuur bekijken'),
         ),
         const SizedBox(height: 8),
       ],

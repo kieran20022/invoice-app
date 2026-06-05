@@ -12,8 +12,8 @@ const _kBgLight = PdfColor(0.949, 0.953, 0.965);
 
 class PdfService {
   static Future<pw.ThemeData> _theme() async {
-    final base   = await PdfGoogleFonts.robotoRegular();
-    final bold   = await PdfGoogleFonts.robotoBold();
+    final base = await PdfGoogleFonts.robotoRegular();
+    final bold = await PdfGoogleFonts.robotoBold();
     final italic = await PdfGoogleFonts.robotoItalic();
     return pw.ThemeData.withFont(base: base, bold: bold, italic: italic);
   }
@@ -23,7 +23,10 @@ class PdfService {
 
   static String _date(DateTime d) => DateFormat('dd-MM-yyyy').format(d);
 
-  static Future<Uint8List> generatePdf(Invoice invoice, {Uint8List? logoBytes}) async {
+  static Future<Uint8List> generatePdf(
+    Invoice invoice, {
+    Uint8List? logoBytes,
+  }) async {
     final doc = pw.Document(theme: await _theme());
 
     doc.addPage(
@@ -42,38 +45,68 @@ class PdfService {
                   if (logoBytes != null)
                     pw.Container(
                       height: 60,
-                      child: pw.Image(pw.MemoryImage(logoBytes), fit: pw.BoxFit.contain),
+                      child: pw.Image(
+                        pw.MemoryImage(logoBytes),
+                        fit: pw.BoxFit.contain,
+                      ),
                     ),
                   if (logoBytes != null) pw.SizedBox(height: 8),
-                  pw.Text(invoice.businessName,
-                      style: pw.TextStyle(
-                          color: _kDark, fontSize: 18, fontWeight: pw.FontWeight.bold)),
-                  if (invoice.businessFormattedAddress.isNotEmpty)
-                    pw.Text(invoice.businessFormattedAddress,
-                        style: pw.TextStyle(color: _kGrey, fontSize: 10)),
-                  if (invoice.businessPhone.isNotEmpty)
-                    pw.Text(invoice.businessPhone,
-                        style: pw.TextStyle(color: _kGrey, fontSize: 10)),
-                  pw.Text(invoice.businessEmail,
-                      style: pw.TextStyle(color: _kGrey, fontSize: 10)),
-                  if (invoice.businessWebsite.isNotEmpty)
-                    pw.Text(invoice.businessWebsite,
-                        style: pw.TextStyle(color: _kGrey, fontSize: 10)),
+                  pw.Text(
+                    invoice.businessName,
+                    style: pw.TextStyle(
+                      color: _kDark,
+                      fontSize: 18,
+                      fontWeight: pw.FontWeight.bold,
+                    ),
+                  ),
+                  pw.SizedBox(height: 8),
+                  pw.Row(
+                    crossAxisAlignment: pw.CrossAxisAlignment.start,
+                    children: [
+                      if (invoice.businessFormattedAddress.isNotEmpty)
+                        pw.Text(
+                          invoice.businessFormattedAddress,
+                          style: pw.TextStyle(color: _kGrey, fontSize: 10),
+                        ),
+                      if (invoice.businessFormattedAddress.isNotEmpty)
+                        pw.SizedBox(width: 24),
+                      pw.Column(
+                        crossAxisAlignment: pw.CrossAxisAlignment.start,
+                        children: [
+                          if (invoice.businessWebsite.isNotEmpty)
+                            pw.Text(
+                              invoice.businessWebsite,
+                              style: pw.TextStyle(color: _kGrey, fontSize: 10),
+                            ),
+                          if (invoice.businessPhone.isNotEmpty)
+                            pw.Text(
+                              invoice.businessPhone,
+                              style: pw.TextStyle(color: _kGrey, fontSize: 10),
+                            ),
+                        ],
+                      ),
+                    ],
+                  ),
                 ],
               ),
               pw.Column(
                 crossAxisAlignment: pw.CrossAxisAlignment.end,
                 children: [
-                  pw.Text('FACTUUR',
-                      style: pw.TextStyle(
-                          color: _kDark,
-                          fontSize: 28,
-                          fontWeight: pw.FontWeight.bold,
-                          letterSpacing: 2)),
+                  pw.Text(
+                    'FACTUUR',
+                    style: pw.TextStyle(
+                      color: _kDark,
+                      fontSize: 28,
+                      fontWeight: pw.FontWeight.bold,
+                      letterSpacing: 2,
+                    ),
+                  ),
                   pw.SizedBox(height: 8),
                   pw.Container(
                     padding: const pw.EdgeInsets.all(12),
-                    decoration: pw.BoxDecoration(border: pw.Border.all(color: _kBorder)),
+                    decoration: pw.BoxDecoration(
+                      border: pw.Border.all(color: _kBorder),
+                    ),
                     child: pw.Column(
                       crossAxisAlignment: pw.CrossAxisAlignment.end,
                       children: [
@@ -88,6 +121,26 @@ class PdfService {
           ),
 
           pw.SizedBox(height: 24),
+
+          // ── KvK & IBAN ──────────────────────────────────────────────────
+          pw.Row(
+            mainAxisAlignment: pw.MainAxisAlignment.start,
+            children: [
+              pw.Text(
+                invoice.businessKvk.isNotEmpty
+                    ? 'KvK: ${invoice.businessKvk}'
+                    : '',
+                style: pw.TextStyle(color: _kGrey, fontSize: 10),
+              ),
+              // pw.Text(
+              //   invoice.businessIban.isNotEmpty
+              //       ? 'IBAN: ${invoice.businessIban}'
+              //       : '',
+              //   style: pw.TextStyle(color: _kGrey, fontSize: 10),
+              // ),
+            ],
+          ),
+          pw.SizedBox(height: 2),
           pw.Divider(color: _kBorder, thickness: 1.5),
           pw.SizedBox(height: 16),
 
@@ -98,14 +151,27 @@ class PdfService {
               pw.Column(
                 crossAxisAlignment: pw.CrossAxisAlignment.start,
                 children: [
-                  pw.Text('KLANTGEGEVENS',
-                      style: pw.TextStyle(
-                          color: _kGrey, fontSize: 9, fontWeight: pw.FontWeight.bold)),
+                  pw.Text(
+                    'KLANTGEGEVENS',
+                    style: pw.TextStyle(
+                      color: _kGrey,
+                      fontSize: 9,
+                      fontWeight: pw.FontWeight.bold,
+                    ),
+                  ),
                   pw.SizedBox(height: 4),
-                  pw.Text(invoice.clientNaam,
-                      style: pw.TextStyle(
-                          color: _kDark, fontWeight: pw.FontWeight.bold, fontSize: 13)),
-                  _clientRow('Kenteken', invoice.clientKenteken),
+                  pw.Text(
+                    invoice.clientNaam,
+                    style: pw.TextStyle(
+                      color: _kDark,
+                      fontWeight: pw.FontWeight.bold,
+                      fontSize: 13,
+                    ),
+                  ),
+                  if (invoice.clientKenteken.isNotEmpty)
+                    _clientRow('Kenteken', invoice.clientKenteken)
+                  else if (invoice.clientProductType.isNotEmpty)
+                    _clientRow('Type', invoice.clientProductType),
                   _clientRow('Km-stand', invoice.clientKmstand),
                   _clientRow('Datum', invoice.clientDatum),
                   if (invoice.clientAdres.isNotEmpty)
@@ -124,7 +190,7 @@ class PdfService {
             border: pw.TableBorder.all(color: _kBorder),
             columnWidths: {
               0: const pw.FlexColumnWidth(4),
-              1: const pw.FixedColumnWidth(45),
+              1: const pw.FixedColumnWidth(70),
               2: const pw.FixedColumnWidth(90),
               3: const pw.FixedColumnWidth(90),
             },
@@ -138,19 +204,31 @@ class PdfService {
                   _th('Prijs incl. BTW', align: pw.TextAlign.right),
                 ],
               ),
-              ...invoice.items.map((item) => pw.TableRow(
-                    children: [
-                      pw.Padding(
-                        padding: const pw.EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-                        child: pw.Text(item.omschrijving,
-                            style: pw.TextStyle(color: _kDark, fontSize: 11)),
+              ...invoice.items.map(
+                (item) => pw.TableRow(
+                  children: [
+                    pw.Padding(
+                      padding: const pw.EdgeInsets.symmetric(
+                        horizontal: 10,
+                        vertical: 8,
                       ),
-                      _td(_fmtQty(item.aantal), align: pw.TextAlign.center),
-                      _td(_fmt(invoice, item.prijsExBtw), align: pw.TextAlign.right),
-                      _td(_fmt(invoice, item.prijsInclBtw(invoice.taxRate)),
-                          align: pw.TextAlign.right),
-                    ],
-                  )),
+                      child: pw.Text(
+                        item.omschrijving,
+                        style: pw.TextStyle(color: _kDark, fontSize: 11),
+                      ),
+                    ),
+                    _td(_fmtQty(item.aantal), align: pw.TextAlign.center),
+                    _td(
+                      _fmt(invoice, item.prijsExBtw),
+                      align: pw.TextAlign.right,
+                    ),
+                    _td(
+                      _fmt(invoice, item.prijsInclBtw(invoice.taxRate)),
+                      align: pw.TextAlign.right,
+                    ),
+                  ],
+                ),
+              ),
             ],
           ),
 
@@ -162,23 +240,59 @@ class PdfService {
             children: [
               pw.Container(
                 width: 240,
-                decoration: pw.BoxDecoration(border: pw.Border.all(color: _kBorder)),
+                decoration: pw.BoxDecoration(
+                  border: pw.Border.all(color: _kBorder),
+                ),
                 child: pw.Column(
                   children: [
-                    _totalRow('Subtotaal ex. BTW',
-                        _fmt(invoice, invoice.subtotaalExBtw), isBold: false),
                     _totalRow(
-                        'BTW ${invoice.taxRate.toStringAsFixed(0)}%',
-                        _fmt(invoice, invoice.btwBedrag),
-                        isBold: false),
-                    _totalRow('Totaal incl. BTW',
-                        _fmt(invoice, invoice.totaalInclBtw),
-                        isBold: true),
+                      'Subtotaal ex. BTW',
+                      _fmt(invoice, invoice.subtotaalExBtw),
+                      isBold: false,
+                    ),
+                    _totalRow(
+                      'BTW ${invoice.taxRate.toStringAsFixed(0)}%',
+                      _fmt(invoice, invoice.btwBedrag),
+                      isBold: false,
+                    ),
+                    _totalRow(
+                      'Totaal incl. BTW',
+                      _fmt(invoice, invoice.totaalInclBtw),
+                      isBold: true,
+                    ),
                   ],
                 ),
               ),
             ],
           ),
+
+          pw.SizedBox(height: 16),
+
+          // ── Betalingsgegevens ─────────────────────────────────────────────
+          if (invoice.businessIban.isNotEmpty)
+            pw.Container(
+              padding: const pw.EdgeInsets.all(10),
+              decoration: pw.BoxDecoration(
+                color: _kBgLight,
+                border: pw.Border.all(color: _kBorder),
+              ),
+              child: pw.Row(
+                children: [
+                  pw.Text(
+                    'Betalingsgegevens:  ',
+                    style: pw.TextStyle(
+                      color: _kGrey,
+                      fontSize: 10,
+                      fontWeight: pw.FontWeight.bold,
+                    ),
+                  ),
+                  pw.Text(
+                    'IBAN: ${invoice.businessIban}',
+                    style: pw.TextStyle(color: _kDark, fontSize: 10),
+                  ),
+                ],
+              ),
+            ),
 
           pw.SizedBox(height: 24),
 
@@ -186,9 +300,14 @@ class PdfService {
           pw.Column(
             crossAxisAlignment: pw.CrossAxisAlignment.start,
             children: [
-              pw.Text('Opmerkingen',
-                  style: pw.TextStyle(
-                      color: _kGrey, fontSize: 9, fontWeight: pw.FontWeight.bold)),
+              pw.Text(
+                'Opmerkingen',
+                style: pw.TextStyle(
+                  color: _kGrey,
+                  fontSize: 9,
+                  fontWeight: pw.FontWeight.bold,
+                ),
+              ),
               pw.SizedBox(height: 4),
               pw.Text(
                 invoice.notes.isNotEmpty ? invoice.notes : 'Geen opmerkingen',
@@ -206,63 +325,86 @@ class PdfService {
   static String get businessFormattedAddressExtension => '';
 
   static pw.Widget _infoRow(String label, String value) => pw.Padding(
-        padding: const pw.EdgeInsets.only(bottom: 2),
-        child: pw.Row(
-          mainAxisAlignment: pw.MainAxisAlignment.end,
-          children: [
-            pw.Text('$label:  ', style: pw.TextStyle(color: _kGrey, fontSize: 10)),
-            pw.Text(value,
-                style: pw.TextStyle(
-                    color: _kDark, fontWeight: pw.FontWeight.bold, fontSize: 10)),
-          ],
+    padding: const pw.EdgeInsets.only(bottom: 2),
+    child: pw.Row(
+      mainAxisAlignment: pw.MainAxisAlignment.end,
+      children: [
+        pw.Text('$label:  ', style: pw.TextStyle(color: _kGrey, fontSize: 10)),
+        pw.Text(
+          value,
+          style: pw.TextStyle(
+            color: _kDark,
+            fontWeight: pw.FontWeight.bold,
+            fontSize: 10,
+          ),
         ),
-      );
+      ],
+    ),
+  );
 
   static pw.Widget _clientRow(String label, String value) => value.isEmpty
       ? pw.SizedBox()
-      : pw.Text('$label: $value',
-          style: pw.TextStyle(color: _kGrey, fontSize: 10));
+      : pw.Text(
+          '$label: $value',
+          style: pw.TextStyle(color: _kGrey, fontSize: 10),
+        );
 
   static pw.Widget _th(String text, {pw.TextAlign align = pw.TextAlign.left}) =>
       pw.Padding(
         padding: const pw.EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-        child: pw.Text(text,
-            textAlign: align,
-            style: pw.TextStyle(
-                color: _kDark, fontWeight: pw.FontWeight.bold, fontSize: 10)),
+        child: pw.Text(
+          text,
+          textAlign: align,
+          style: pw.TextStyle(
+            color: _kDark,
+            fontWeight: pw.FontWeight.bold,
+            fontSize: 10,
+          ),
+        ),
       );
 
   static pw.Widget _td(String text, {pw.TextAlign align = pw.TextAlign.left}) =>
       pw.Padding(
         padding: const pw.EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-        child: pw.Text(text,
-            textAlign: align,
-            style: pw.TextStyle(color: _kDark, fontSize: 10)),
+        child: pw.Text(
+          text,
+          textAlign: align,
+          style: pw.TextStyle(color: _kDark, fontSize: 10),
+        ),
       );
 
-  static pw.Widget _totalRow(String label, String value, {required bool isBold}) =>
-      pw.Container(
-        padding: const pw.EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-        decoration: pw.BoxDecoration(
-          border: pw.Border(bottom: pw.BorderSide(color: _kBorder)),
-          color: isBold ? _kBgLight : PdfColors.white,
+  static pw.Widget _totalRow(
+    String label,
+    String value, {
+    required bool isBold,
+  }) => pw.Container(
+    padding: const pw.EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+    decoration: pw.BoxDecoration(
+      border: pw.Border(bottom: pw.BorderSide(color: _kBorder)),
+      color: isBold ? _kBgLight : PdfColors.white,
+    ),
+    child: pw.Row(
+      mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+      children: [
+        pw.Text(
+          label,
+          style: pw.TextStyle(
+            color: _kDark,
+            fontWeight: isBold ? pw.FontWeight.bold : pw.FontWeight.normal,
+            fontSize: 11,
+          ),
         ),
-        child: pw.Row(
-          mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
-          children: [
-            pw.Text(label,
-                style: pw.TextStyle(
-                    color: _kDark,
-                    fontWeight: isBold ? pw.FontWeight.bold : pw.FontWeight.normal,
-                    fontSize: 11)),
-            pw.Text(value,
-                style: pw.TextStyle(
-                    color: _kDark,
-                    fontWeight: isBold ? pw.FontWeight.bold : pw.FontWeight.normal,
-                    fontSize: 11)),
-          ],
+        pw.Text(
+          value,
+          style: pw.TextStyle(
+            color: _kDark,
+            fontWeight: isBold ? pw.FontWeight.bold : pw.FontWeight.normal,
+            fontSize: 11,
+          ),
         ),
-      );
+      ],
+    ),
+  );
 
   static String _fmtQty(double qty) =>
       qty == qty.truncateToDouble() ? qty.toInt().toString() : qty.toString();
@@ -270,9 +412,11 @@ class PdfService {
 
 extension _InvoiceAddr on Invoice {
   String get businessFormattedAddress {
-    final parts = [businessAddress, businessCity, businessState, businessZip, businessCountry]
-        .where((s) => s.isNotEmpty)
-        .toList();
-    return parts.join(', ');
+    final parts = [
+      businessAddress,
+      "$businessZip, $businessCity",
+      businessState,
+    ].where((s) => s.isNotEmpty).toList();
+    return parts.join('\n');
   }
 }

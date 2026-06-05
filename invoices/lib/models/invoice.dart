@@ -55,6 +55,7 @@ class Invoice {
   // Client snapshot
   final String clientNaam;
   final String clientKenteken;
+  final String clientProductType;
   final String clientKmstand;
   final String clientDatum;
   final String clientAdres;
@@ -62,7 +63,8 @@ class Invoice {
 
   // Business snapshot
   final String businessName;
-  final String businessEmail;
+  final String businessKvk;
+  final String businessIban;
   final String businessPhone;
   final String businessAddress;
   final String businessCity;
@@ -85,12 +87,14 @@ class Invoice {
     required this.issueDate,
     required this.clientNaam,
     this.clientKenteken = '',
+    this.clientProductType = '',
     this.clientKmstand = '',
     this.clientDatum = '',
     this.clientAdres = '',
     this.clientTelefoonnummer = '',
     required this.businessName,
-    required this.businessEmail,
+    this.businessKvk = '',
+    this.businessIban = '',
     this.businessPhone = '',
     this.businessAddress = '',
     this.businessCity = '',
@@ -114,20 +118,24 @@ class Invoice {
   // Legacy alias used in PDF/email formatting
   double get total => totaalInclBtw;
 
-  String get pdfFilename =>
-      'Factuur $invoiceNumber - $clientKenteken.pdf';
+  String get pdfFilename {
+    final ref = clientKenteken.isNotEmpty ? clientKenteken : clientProductType;
+    return ref.isNotEmpty ? 'Factuur $invoiceNumber - $ref.pdf' : 'Factuur $invoiceNumber.pdf';
+  }
 
   Map<String, dynamic> toMap() => {
         'invoiceNumber': invoiceNumber,
         'issueDate': issueDate.toIso8601String(),
         'clientNaam': clientNaam,
         'clientKenteken': clientKenteken,
+        'clientProductType': clientProductType,
         'clientKmstand': clientKmstand,
         'clientDatum': clientDatum,
         'clientAdres': clientAdres,
         'clientTelefoonnummer': clientTelefoonnummer,
         'businessName': businessName,
-        'businessEmail': businessEmail,
+        'businessKvk': businessKvk,
+        'businessIban': businessIban,
         'businessPhone': businessPhone,
         'businessAddress': businessAddress,
         'businessCity': businessCity,
@@ -150,12 +158,14 @@ class Invoice {
         issueDate: DateTime.parse(map['issueDate'] ?? DateTime.now().toIso8601String()),
         clientNaam: map['clientNaam'] ?? map['clientName'] ?? '',
         clientKenteken: map['clientKenteken'] ?? '',
+        clientProductType: map['clientProductType'] ?? '',
         clientKmstand: map['clientKmstand'] ?? '',
         clientDatum: map['clientDatum'] ?? '',
         clientAdres: map['clientAdres'] ?? map['clientAddress'] ?? '',
         clientTelefoonnummer: map['clientTelefoonnummer'] ?? map['clientPhone'] ?? '',
         businessName: map['businessName'] ?? '',
-        businessEmail: map['businessEmail'] ?? '',
+        businessKvk: map['businessKvk'] ?? map['businessEmail'] ?? '',
+        businessIban: map['businessIban'] ?? '',
         businessPhone: map['businessPhone'] ?? '',
         businessAddress: map['businessAddress'] ?? '',
         businessCity: map['businessCity'] ?? '',
@@ -179,6 +189,7 @@ class Invoice {
     DateTime? issueDate,
     String? clientNaam,
     String? clientKenteken,
+    String? clientProductType,
     String? clientKmstand,
     String? clientDatum,
     String? clientAdres,
@@ -196,12 +207,14 @@ class Invoice {
         issueDate: issueDate ?? this.issueDate,
         clientNaam: clientNaam ?? this.clientNaam,
         clientKenteken: clientKenteken ?? this.clientKenteken,
+        clientProductType: clientProductType ?? this.clientProductType,
         clientKmstand: clientKmstand ?? this.clientKmstand,
         clientDatum: clientDatum ?? this.clientDatum,
         clientAdres: clientAdres ?? this.clientAdres,
         clientTelefoonnummer: clientTelefoonnummer ?? this.clientTelefoonnummer,
         businessName: businessName,
-        businessEmail: businessEmail,
+        businessKvk: businessKvk,
+        businessIban: businessIban,
         businessPhone: businessPhone,
         businessAddress: businessAddress,
         businessCity: businessCity,

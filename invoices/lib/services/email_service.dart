@@ -17,7 +17,12 @@ class EmailService {
     String recipientEmail = '',
   }) async {
     if (kIsWeb) {
-      await shareInvoice(invoice: invoice, pdfBytes: pdfBytes, subject: subject, message: body);
+      await shareInvoice(
+        invoice: invoice,
+        pdfBytes: pdfBytes,
+        subject: subject,
+        message: body,
+      );
       return;
     }
 
@@ -61,16 +66,40 @@ class EmailService {
 
   /// Replace template variables with actual invoice values.
   static String renderTemplate(String template, Invoice invoice) {
+    String voertuigInfo = '';
+    if (invoice.clientKenteken.isNotEmpty) {
+      voertuigInfo = 'voor het voertuig met kenteken ${invoice.clientKenteken}';
+      if (invoice.clientKmstand.isNotEmpty) {
+        voertuigInfo += ' (Km-stand: ${invoice.clientKmstand})';
+      }
+    } else if (invoice.clientProductType.isNotEmpty) {
+      voertuigInfo = 'voor uw ${invoice.clientProductType}';
+    }
+
     return template
         .replaceAll('{naam}', invoice.clientNaam)
         .replaceAll('{kenteken}', invoice.clientKenteken)
+        .replaceAll('{producttype}', invoice.clientProductType)
         .replaceAll('{kmstand}', invoice.clientKmstand)
+        .replaceAll('{voertuig_info}', voertuigInfo)
         .replaceAll('{factuur_nummer}', invoice.invoiceNumber)
         .replaceAll('{bedrijfsnaam}', invoice.businessName)
-        .replaceAll('{datum}', DateFormat('dd-MM-yyyy').format(invoice.issueDate))
-        .replaceAll('{totaal}', '${invoice.currency}${invoice.totaalInclBtw.toStringAsFixed(2)}');
+        .replaceAll(
+          '{datum}',
+          DateFormat('dd-MM-yyyy').format(invoice.issueDate),
+        )
+        .replaceAll(
+          '{totaal}',
+          '${invoice.currency}${invoice.totaalInclBtw.toStringAsFixed(2)}',
+        );
   }
 
-  static String buildDefaultSubject(Invoice invoice) =>
-      'Factuur ${invoice.invoiceNumber} - ${invoice.clientKenteken}';
+  static String buildDefaultSubject(Invoice invoice) {
+    final ref = invoice.clientKenteken.isNotEmpty
+        ? invoice.clientKenteken
+        : invoice.clientProductType;
+    return ref.isNotEmpty
+        ? 'Factuur ${invoice.invoiceNumber} - $ref'
+        : 'Factuur ${invoice.invoiceNumber}';
+  }
 }

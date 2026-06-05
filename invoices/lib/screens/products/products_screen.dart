@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 import 'package:uuid/uuid.dart';
 import '../../config/theme.dart';
 import '../../models/product.dart';
+import '../../providers/business_provider.dart';
 import '../../providers/product_provider.dart';
 
 class ProductsScreen extends StatelessWidget {
@@ -50,13 +51,14 @@ class ProductsScreen extends StatelessWidget {
   }
 
   void _showForm(BuildContext context, Product? product) {
+    final taxRate = context.read<BusinessProvider>().businessInfo?.defaultTaxRate ?? 21.0;
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
-      builder: (_) => _ProductForm(product: product),
+      builder: (_) => _ProductForm(product: product, taxRate: taxRate),
     );
   }
 
@@ -152,7 +154,8 @@ class _ProductCard extends StatelessWidget {
 
 class _ProductForm extends StatefulWidget {
   final Product? product;
-  const _ProductForm({this.product});
+  final double taxRate;
+  const _ProductForm({this.product, required this.taxRate});
 
   @override
   State<_ProductForm> createState() => _ProductFormState();
@@ -162,24 +165,60 @@ class _ProductFormState extends State<_ProductForm> {
   final _formKey = GlobalKey<FormState>();
   late final TextEditingController _name;
   late final TextEditingController _description;
-  late final TextEditingController _price;
+  late final TextEditingController _priceExcl;
+  late final TextEditingController _priceIncl;
   late final TextEditingController _unit;
+  bool _updatingPrice = false;
 
   @override
   void initState() {
     super.initState();
     _name = TextEditingController(text: widget.product?.name ?? '');
     _description = TextEditingController(text: widget.product?.description ?? '');
-    _price = TextEditingController(
-        text: widget.product?.price.toStringAsFixed(2) ?? '');
     _unit = TextEditingController(text: widget.product?.unit ?? 'stuk');
+
+    final excl = widget.product?.price;
+    _priceExcl = TextEditingController(text: excl != null ? excl.toStringAsFixed(2) : '');
+    _priceIncl = TextEditingController(
+      text: excl != null
+          ? (excl * (1 + widget.taxRate / 100)).toStringAsFixed(2)
+          : '',
+    );
+
+    _priceExcl.addListener(_onExclChanged);
+    _priceIncl.addListener(_onInclChanged);
+  }
+
+  void _onExclChanged() {
+    if (_updatingPrice) return;
+    _updatingPrice = true;
+    final excl = double.tryParse(_priceExcl.text);
+    if (excl != null) {
+      _priceIncl.text = (excl * (1 + widget.taxRate / 100)).toStringAsFixed(2);
+    } else if (_priceExcl.text.isEmpty) {
+      _priceIncl.text = '';
+    }
+    _updatingPrice = false;
+  }
+
+  void _onInclChanged() {
+    if (_updatingPrice) return;
+    _updatingPrice = true;
+    final incl = double.tryParse(_priceIncl.text);
+    if (incl != null) {
+      _priceExcl.text = (incl / (1 + widget.taxRate / 100)).toStringAsFixed(2);
+    } else if (_priceIncl.text.isEmpty) {
+      _priceExcl.text = '';
+    }
+    _updatingPrice = false;
   }
 
   @override
   void dispose() {
     _name.dispose();
     _description.dispose();
-    _price.dispose();
+    _priceExcl.dispose();
+    _priceIncl.dispose();
     _unit.dispose();
     super.dispose();
   }
@@ -190,7 +229,7 @@ class _ProductFormState extends State<_ProductForm> {
       id: widget.product?.id ?? const Uuid().v4(),
       name: _name.text.trim(),
       description: _description.text.trim(),
-      price: double.tryParse(_price.text) ?? 0,
+      price: double.tryParse(_priceExcl.text) ?? 0,
       unit: _unit.text.trim().isEmpty ? 'stuk' : _unit.text.trim(),
     );
     await context.read<ProductProvider>().saveProduct(product);
@@ -218,20 +257,22 @@ class _ProductFormState extends State<_ProductForm> {
                 ),
                 const Spacer(),
                 IconButton(
-                    icon: const Icon(Icons.close),
-                    onPressed: () => Navigator.pop(context)),
+                  icon: const Icon(Icons.close),
+                  onPressed: () => Navigator.pop(context),
+                ),
               ],
             ),
             const SizedBox(height: 16),
             TextFormField(
               controller: _name,
+              textCapitalization: TextCapitalization.sentences,
               decoration: const InputDecoration(labelText: 'Naam *'),
-              validator: (v) =>
-                  v == null || v.trim().isEmpty ? 'Verplicht' : null,
+              validator: (v) => v == null || v.trim().isEmpty ? 'Verplicht' : null,
             ),
             const SizedBox(height: 12),
             TextFormField(
               controller: _description,
+              textCapitalization: TextCapitalization.sentences,
               decoration: const InputDecoration(labelText: 'Omschrijving (optioneel)'),
               maxLines: 2,
             ),
@@ -239,12 +280,13 @@ class _ProductFormState extends State<_ProductForm> {
             Row(
               children: [
                 Expanded(
-                  flex: 2,
                   child: TextFormField(
-                    controller: _price,
+                    controller: _priceExcl,
                     decoration: const InputDecoration(
-                        labelText: 'Prijs ex. BTW *', prefixText: '€ '),
-                    keyboardType: TextInputType.number,
+                      labelText: 'Prijs ex. BTW *',
+                      prefixText: '€ ',
+                    ),
+                    keyboardType: const TextInputType.numberWithOptions(decimal: true),
                     validator: (v) {
                       if (v == null || v.isEmpty) return 'Verplicht';
                       if (double.tryParse(v) == null) return 'Ongeldig';
@@ -255,18 +297,25 @@ class _ProductFormState extends State<_ProductForm> {
                 const SizedBox(width: 12),
                 Expanded(
                   child: TextFormField(
-                    controller: _unit,
-                    decoration: const InputDecoration(labelText: 'Eenheid'),
+                    controller: _priceIncl,
+                    decoration: const InputDecoration(
+                      labelText: 'Prijs incl. BTW',
+                      prefixText: '€ ',
+                    ),
+                    keyboardType: const TextInputType.numberWithOptions(decimal: true),
                   ),
                 ),
               ],
             ),
+            const SizedBox(height: 12),
+            TextFormField(
+              controller: _unit,
+              decoration: const InputDecoration(labelText: 'Eenheid'),
+            ),
             const SizedBox(height: 20),
             ElevatedButton(
               onPressed: _save,
-              child: Text(widget.product == null
-                  ? 'Product toevoegen'
-                  : 'Wijzigingen opslaan'),
+              child: Text(widget.product == null ? 'Product toevoegen' : 'Wijzigingen opslaan'),
             ),
           ],
         ),

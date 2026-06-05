@@ -40,12 +40,15 @@ class _InvoicePreviewScreenState extends State<InvoicePreviewScreen> {
             itemBuilder: (_) => [
               if (_invoice.status != 'betaald')
                 const PopupMenuItem(
-                    value: 'betaald', child: Text('Markeer als betaald')),
+                  value: 'betaald',
+                  child: Text('Markeer als betaald'),
+                ),
               if (_invoice.status == 'betaald')
                 const PopupMenuItem(
-                    value: 'verzonden', child: Text('Markeer als verzonden')),
-              const PopupMenuItem(
-                  value: 'delete', child: Text('Verwijderen')),
+                  value: 'verzonden',
+                  child: Text('Markeer als verzonden'),
+                ),
+              const PopupMenuItem(value: 'delete', child: Text('Verwijderen')),
             ],
           ),
         ],
@@ -59,8 +62,9 @@ class _InvoicePreviewScreenState extends State<InvoicePreviewScreen> {
             child: Row(
               children: [
                 _MetaChip(
-                    label: '${_invoice.clientNaam} · ${_invoice.clientKenteken}',
-                    icon: Icons.directions_car_outlined),
+                  label: '${_invoice.clientNaam} · ${_invoice.clientKenteken}',
+                  icon: Icons.directions_car_outlined,
+                ),
                 const Spacer(),
                 _StatusBadge(status: _invoice.status),
               ],
@@ -93,13 +97,13 @@ class _InvoicePreviewScreenState extends State<InvoicePreviewScreen> {
           // PDF Preview
           Expanded(
             child: PdfPreview(
-              build: (_) => PdfService.generatePdf(_invoice, logoBytes: logoBytes),
+              build: (_) =>
+                  PdfService.generatePdf(_invoice, logoBytes: logoBytes),
               canChangeOrientation: false,
               canDebug: false,
               pdfFileName: _invoice.pdfFilename,
               actions: const [],
-              loadingWidget:
-                  const Center(child: CircularProgressIndicator()),
+              loadingWidget: const Center(child: CircularProgressIndicator()),
             ),
           ),
 
@@ -124,12 +128,11 @@ class _InvoicePreviewScreenState extends State<InvoicePreviewScreen> {
                   child: ElevatedButton.icon(
                     onPressed: () => Navigator.of(context).push(
                       MaterialPageRoute(
-                        builder: (_) =>
-                            EmailEditorScreen(invoice: _invoice),
+                        builder: (_) => EmailEditorScreen(invoice: _invoice),
                       ),
                     ),
                     icon: const Icon(Icons.send_outlined, size: 18),
-                    label: const Text('Verstuur factuur'),
+                    label: const Text('Versturen'),
                   ),
                 ),
               ],
@@ -152,7 +155,8 @@ class _InvoicePreviewScreenState extends State<InvoicePreviewScreen> {
         builder: (ctx) => AlertDialog(
           title: const Text('Factuur verwijderen'),
           content: Text(
-              'Verwijder ${_invoice.invoiceNumber}? Dit kan niet ongedaan worden gemaakt.'),
+            'Verwijder ${_invoice.invoiceNumber}? Dit kan niet ongedaan worden gemaakt.',
+          ),
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(ctx, false),
@@ -193,17 +197,20 @@ class _MetaChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(icon, size: 14, color: AppTheme.textSecondary),
-          const SizedBox(width: 4),
-          Text(label,
-              style: const TextStyle(
-                  fontSize: 13,
-                  color: AppTheme.textSecondary,
-                  fontWeight: FontWeight.w500)),
-        ],
-      );
+    mainAxisSize: MainAxisSize.min,
+    children: [
+      Icon(icon, size: 14, color: AppTheme.textSecondary),
+      const SizedBox(width: 4),
+      Text(
+        label,
+        style: const TextStyle(
+          fontSize: 13,
+          color: AppTheme.textSecondary,
+          fontWeight: FontWeight.w500,
+        ),
+      ),
+    ],
+  );
 }
 
 class _StatusBadge extends StatelessWidget {
@@ -233,10 +240,11 @@ class _StatusBadge extends StatelessWidget {
       child: Text(
         status.toUpperCase(),
         style: TextStyle(
-            color: color,
-            fontWeight: FontWeight.w700,
-            fontSize: 11,
-            letterSpacing: 0.5),
+          color: color,
+          fontWeight: FontWeight.w700,
+          fontSize: 11,
+          letterSpacing: 0.5,
+        ),
       ),
     );
   }
