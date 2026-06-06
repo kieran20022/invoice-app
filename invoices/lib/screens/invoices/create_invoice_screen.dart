@@ -1158,7 +1158,7 @@ class _ItemFormSheetState extends State<_ItemFormSheet> {
                     textInputAction: TextInputAction.done,
                     onFieldSubmitted: (_) => _save(),
                     decoration: InputDecoration(
-                      labelText: 'Prijs incl. BTW',
+                      labelText: 'Prijs incl. BTW *',
                       prefixText: '${widget.currency} ',
                     ),
                     keyboardType: const TextInputType.numberWithOptions(

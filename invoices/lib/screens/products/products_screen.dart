@@ -170,6 +170,12 @@ class _ProductFormState extends State<_ProductForm> {
   late final TextEditingController _unit;
   bool _updatingPrice = false;
 
+  final _nameFocus = FocusNode();
+  final _descriptionFocus = FocusNode();
+  final _priceExclFocus = FocusNode();
+  final _priceInclFocus = FocusNode();
+  final _unitFocus = FocusNode();
+
   @override
   void initState() {
     super.initState();
@@ -187,6 +193,12 @@ class _ProductFormState extends State<_ProductForm> {
 
     _priceExcl.addListener(_onExclChanged);
     _priceIncl.addListener(_onInclChanged);
+
+    if (widget.product == null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _nameFocus.requestFocus();
+      });
+    }
   }
 
   void _onExclChanged() {
@@ -220,6 +232,11 @@ class _ProductFormState extends State<_ProductForm> {
     _priceExcl.dispose();
     _priceIncl.dispose();
     _unit.dispose();
+    _nameFocus.dispose();
+    _descriptionFocus.dispose();
+    _priceExclFocus.dispose();
+    _priceInclFocus.dispose();
+    _unitFocus.dispose();
     super.dispose();
   }
 
@@ -265,14 +282,22 @@ class _ProductFormState extends State<_ProductForm> {
             const SizedBox(height: 16),
             TextFormField(
               controller: _name,
+              focusNode: _nameFocus,
               textCapitalization: TextCapitalization.sentences,
+              textInputAction: TextInputAction.next,
+              onFieldSubmitted: (_) =>
+                  FocusScope.of(context).requestFocus(_descriptionFocus),
               decoration: const InputDecoration(labelText: 'Naam *'),
               validator: (v) => v == null || v.trim().isEmpty ? 'Verplicht' : null,
             ),
             const SizedBox(height: 12),
             TextFormField(
               controller: _description,
+              focusNode: _descriptionFocus,
               textCapitalization: TextCapitalization.sentences,
+              textInputAction: TextInputAction.next,
+              onFieldSubmitted: (_) =>
+                  FocusScope.of(context).requestFocus(_priceExclFocus),
               decoration: const InputDecoration(labelText: 'Omschrijving (optioneel)'),
               maxLines: 2,
             ),
@@ -282,6 +307,10 @@ class _ProductFormState extends State<_ProductForm> {
                 Expanded(
                   child: TextFormField(
                     controller: _priceExcl,
+                    focusNode: _priceExclFocus,
+                    textInputAction: TextInputAction.next,
+                    onFieldSubmitted: (_) =>
+                        FocusScope.of(context).requestFocus(_priceInclFocus),
                     decoration: const InputDecoration(
                       labelText: 'Prijs ex. BTW *',
                       prefixText: '€ ',
@@ -298,6 +327,10 @@ class _ProductFormState extends State<_ProductForm> {
                 Expanded(
                   child: TextFormField(
                     controller: _priceIncl,
+                    focusNode: _priceInclFocus,
+                    textInputAction: TextInputAction.next,
+                    onFieldSubmitted: (_) =>
+                        FocusScope.of(context).requestFocus(_unitFocus),
                     decoration: const InputDecoration(
                       labelText: 'Prijs incl. BTW',
                       prefixText: '€ ',
@@ -310,6 +343,9 @@ class _ProductFormState extends State<_ProductForm> {
             const SizedBox(height: 12),
             TextFormField(
               controller: _unit,
+              focusNode: _unitFocus,
+              textInputAction: TextInputAction.done,
+              onFieldSubmitted: (_) => _save(),
               decoration: const InputDecoration(labelText: 'Eenheid'),
             ),
             const SizedBox(height: 20),

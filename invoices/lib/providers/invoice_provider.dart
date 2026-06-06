@@ -55,6 +55,7 @@ class InvoiceProvider extends ChangeNotifier {
       issueDate: now,
       clientNaam: '',
       businessName: business.name,
+      businessInvoicePrefix: business.invoicePrefix,
       businessKvk: business.kvk,
       businessIban: business.iban,
       businessPhone: business.phone,
@@ -150,7 +151,8 @@ class InvoiceProvider extends ChangeNotifier {
     if (_userId == null || _draft == null) throw Exception('Geen concept of gebruiker');
 
     final invoiceNumber = await _firestore.incrementAndGetInvoiceNumber(_userId!);
-    final formattedNumber = 'F-${invoiceNumber.toString().padLeft(4, '0')}';
+    final prefix = _draft!.businessInvoicePrefix.isEmpty ? 'F' : _draft!.businessInvoicePrefix;
+    final formattedNumber = '$prefix-${invoiceNumber.toString().padLeft(4, '0')}';
 
     final invoice = Invoice(
       id: '',
@@ -164,6 +166,7 @@ class InvoiceProvider extends ChangeNotifier {
       clientAdres: _draft!.clientAdres,
       clientTelefoonnummer: _draft!.clientTelefoonnummer,
       businessName: _draft!.businessName,
+      businessInvoicePrefix: _draft!.businessInvoicePrefix,
       businessKvk: _draft!.businessKvk,
       businessIban: _draft!.businessIban,
       businessPhone: _draft!.businessPhone,
@@ -195,6 +198,7 @@ class InvoiceProvider extends ChangeNotifier {
       clientAdres: invoice.clientAdres,
       clientTelefoonnummer: invoice.clientTelefoonnummer,
       businessName: invoice.businessName,
+      businessInvoicePrefix: invoice.businessInvoicePrefix,
       businessKvk: invoice.businessKvk,
       businessIban: invoice.businessIban,
       businessPhone: invoice.businessPhone,

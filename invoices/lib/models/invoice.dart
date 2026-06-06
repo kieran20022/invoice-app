@@ -63,6 +63,7 @@ class Invoice {
 
   // Business snapshot
   final String businessName;
+  final String businessInvoicePrefix;
   final String businessKvk;
   final String businessIban;
   final String businessPhone;
@@ -93,6 +94,7 @@ class Invoice {
     this.clientAdres = '',
     this.clientTelefoonnummer = '',
     required this.businessName,
+    this.businessInvoicePrefix = 'F',
     this.businessKvk = '',
     this.businessIban = '',
     this.businessPhone = '',
@@ -120,7 +122,7 @@ class Invoice {
 
   String get pdfFilename {
     final ref = clientKenteken.isNotEmpty ? clientKenteken : clientProductType;
-    return ref.isNotEmpty ? 'Factuur $invoiceNumber - $ref.pdf' : 'Factuur $invoiceNumber.pdf';
+    return ref.isNotEmpty ? '$invoiceNumber - $ref.pdf' : '$invoiceNumber.pdf';
   }
 
   Map<String, dynamic> toMap() => {
@@ -134,6 +136,7 @@ class Invoice {
         'clientAdres': clientAdres,
         'clientTelefoonnummer': clientTelefoonnummer,
         'businessName': businessName,
+        'businessInvoicePrefix': businessInvoicePrefix,
         'businessKvk': businessKvk,
         'businessIban': businessIban,
         'businessPhone': businessPhone,
@@ -164,6 +167,7 @@ class Invoice {
         clientAdres: map['clientAdres'] ?? map['clientAddress'] ?? '',
         clientTelefoonnummer: map['clientTelefoonnummer'] ?? map['clientPhone'] ?? '',
         businessName: map['businessName'] ?? '',
+        businessInvoicePrefix: map['businessInvoicePrefix'] ?? 'F',
         businessKvk: map['businessKvk'] ?? map['businessEmail'] ?? '',
         businessIban: map['businessIban'] ?? '',
         businessPhone: map['businessPhone'] ?? '',
@@ -213,6 +217,7 @@ class Invoice {
         clientAdres: clientAdres ?? this.clientAdres,
         clientTelefoonnummer: clientTelefoonnummer ?? this.clientTelefoonnummer,
         businessName: businessName,
+        businessInvoicePrefix: businessInvoicePrefix,
         businessKvk: businessKvk,
         businessIban: businessIban,
         businessPhone: businessPhone,

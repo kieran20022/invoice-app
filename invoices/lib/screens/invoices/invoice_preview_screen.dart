@@ -1,13 +1,13 @@
-import 'dart:typed_data';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:printing/printing.dart';
 import 'package:provider/provider.dart';
 import '../../config/theme.dart';
 import '../../models/invoice.dart';
 import '../../providers/business_provider.dart';
 import '../../providers/invoice_provider.dart';
+import '../../services/email_service.dart';
 import '../../services/pdf_service.dart';
-import '../email/email_editor_screen.dart';
 
 class InvoicePreviewScreen extends StatefulWidget {
   final Invoice invoice;
@@ -19,6 +19,7 @@ class InvoicePreviewScreen extends StatefulWidget {
 
 class _InvoicePreviewScreenState extends State<InvoicePreviewScreen> {
   late Invoice _invoice;
+  bool _sending = false;
 
   @override
   void initState() {
@@ -62,7 +63,11 @@ class _InvoicePreviewScreenState extends State<InvoicePreviewScreen> {
             child: Row(
               children: [
                 _MetaChip(
-                  label: '${_invoice.clientNaam} · ${_invoice.clientKenteken}',
+                  label: _invoice.clientKenteken.isNotEmpty
+                      ? '${_invoice.clientNaam} · ${_invoice.clientKenteken}'
+                      : _invoice.clientProductType.isNotEmpty
+                      ? '${_invoice.clientNaam} · ${_invoice.clientProductType}'
+                      : _invoice.clientNaam,
                   icon: Icons.directions_car_outlined,
                 ),
                 const Spacer(),
@@ -126,13 +131,18 @@ class _InvoicePreviewScreenState extends State<InvoicePreviewScreen> {
                 const SizedBox(width: 12),
                 Expanded(
                   child: ElevatedButton.icon(
-                    onPressed: () => Navigator.of(context).push(
-                      MaterialPageRoute(
-                        builder: (_) => EmailEditorScreen(invoice: _invoice),
-                      ),
-                    ),
-                    icon: const Icon(Icons.send_outlined, size: 18),
-                    label: const Text('Versturen'),
+                    onPressed: _sending ? null : () => _shareInvoice(logoBytes),
+                    icon: _sending
+                        ? const SizedBox(
+                            width: 18,
+                            height: 18,
+                            child: CircularProgressIndicator(
+                              color: Colors.white,
+                              strokeWidth: 2,
+                            ),
+                          )
+                        : const Icon(Icons.share_outlined, size: 18),
+                    label: Text(_sending ? 'Bezig...' : 'Versturen'),
                   ),
                 ),
               ],
@@ -146,6 +156,49 @@ class _InvoicePreviewScreenState extends State<InvoicePreviewScreen> {
   Future<void> _downloadPdf(Uint8List? logoBytes) async {
     final bytes = await PdfService.generatePdf(_invoice, logoBytes: logoBytes);
     await Printing.sharePdf(bytes: bytes, filename: _invoice.pdfFilename);
+  }
+
+  Future<void> _shareInvoice(Uint8List? logoBytes) async {
+    setState(() => _sending = true);
+    try {
+      final businessProvider = context.read<BusinessProvider>();
+      final template = businessProvider.businessInfo?.emailTemplate ?? '';
+      final subject = EmailService.buildDefaultSubject(_invoice);
+      final body = EmailService.renderTemplate(template, _invoice);
+      final pdfBytes = await PdfService.generatePdf(
+        _invoice,
+        logoBytes: logoBytes,
+      );
+
+      final shareText = '$subject\n\n$body';
+      await Clipboard.setData(ClipboardData(text: shareText));
+
+      await EmailService.shareInvoice(
+        invoice: _invoice,
+        pdfBytes: pdfBytes,
+        subject: subject,
+        message: body,
+      );
+      if (!mounted) return;
+      // ScaffoldMessenger.of(context).showSnackBar(
+      //   const SnackBar(
+      //     content: Text('Bericht gekopieerd — plak het in WhatsApp'),
+      //     behavior: SnackBarBehavior.floating,
+      //     duration: Duration(seconds: 4),
+      //   ),
+      // );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Fout: $e'),
+          behavior: SnackBarBehavior.floating,
+          backgroundColor: AppTheme.error,
+        ),
+      );
+    } finally {
+      if (mounted) setState(() => _sending = false);
+    }
   }
 
   Future<void> _handleMenu(String action) async {

@@ -203,12 +203,19 @@ class _InvoiceCard extends StatelessWidget {
                             style: const TextStyle(
                                 fontWeight: FontWeight.w700, fontSize: 14)),
                         const SizedBox(width: 8),
-                        _StatusBadge(status: invoice.status),
+                        _TappableStatusBadge(invoice: invoice),
                       ],
                     ),
                     const SizedBox(height: 2),
                     Text(
-                      '${invoice.clientNaam} · ${invoice.clientKenteken}',
+                      () {
+                        final ref = invoice.clientKenteken.isNotEmpty
+                            ? invoice.clientKenteken
+                            : invoice.clientProductType;
+                        return ref.isNotEmpty
+                            ? '${invoice.clientNaam} · $ref'
+                            : invoice.clientNaam;
+                      }(),
                       style: const TextStyle(
                           color: AppTheme.textSecondary, fontSize: 13),
                       maxLines: 1,
@@ -265,6 +272,56 @@ class _FilterChip extends StatelessWidget {
   }
 }
 
+class _TappableStatusBadge extends StatelessWidget {
+  final Invoice invoice;
+  const _TappableStatusBadge({required this.invoice});
+
+  static const _allStatuses = [
+    ('concept', 'Concept'),
+    ('verzonden', 'Verzonden'),
+    ('betaald', 'Betaald'),
+  ];
+
+  static Color _colorFor(String s) => switch (s) {
+        'betaald' => const Color(0xFF10B981),
+        'verzonden' => AppTheme.primary,
+        _ => AppTheme.textSecondary,
+      };
+
+  @override
+  Widget build(BuildContext context) {
+    final color = _colorFor(invoice.status);
+    final label =
+        invoice.status[0].toUpperCase() + invoice.status.substring(1);
+
+    return PopupMenuButton<String>(
+      onSelected: (s) =>
+          context.read<InvoiceProvider>().updateStatus(invoice.id, s),
+      itemBuilder: (_) => _allStatuses
+          .where((s) => s.$1 != invoice.status)
+          .map((s) => PopupMenuItem(value: s.$1, child: Text(s.$2)))
+          .toList(),
+      padding: EdgeInsets.zero,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+        decoration: BoxDecoration(
+          color: color.withAlpha(26),
+          borderRadius: BorderRadius.circular(4),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(label,
+                style: TextStyle(
+                    color: color, fontWeight: FontWeight.w600, fontSize: 10)),
+            Icon(Icons.arrow_drop_down, size: 12, color: color),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 class _StatusBadge extends StatelessWidget {
   final String status;
   const _StatusBadge({required this.status});
@@ -282,13 +339,14 @@ class _StatusBadge extends StatelessWidget {
       default:
         color = AppTheme.textSecondary;
     }
+    final label = status[0].toUpperCase() + status.substring(1);
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
       decoration: BoxDecoration(
         color: color.withAlpha(26),
         borderRadius: BorderRadius.circular(4),
       ),
-      child: Text(status,
+      child: Text(label,
           style: TextStyle(
               color: color, fontWeight: FontWeight.w600, fontSize: 10)),
     );
