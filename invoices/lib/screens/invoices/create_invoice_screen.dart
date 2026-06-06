@@ -13,14 +13,20 @@ import 'invoice_preview_screen.dart';
 enum Caps { none, first, words, all }
 
 class CreateInvoiceScreen extends StatefulWidget {
-  const CreateInvoiceScreen({super.key});
+  final Invoice? editInvoice;
+  final int initialStep;
+  const CreateInvoiceScreen({
+    super.key,
+    this.editInvoice,
+    this.initialStep = 0,
+  });
 
   @override
   State<CreateInvoiceScreen> createState() => _CreateInvoiceScreenState();
 }
 
 class _CreateInvoiceScreenState extends State<CreateInvoiceScreen> {
-  int _step = 0;
+  late int _step;
   final _clientFormKey = GlobalKey<FormState>();
   bool _saving = false;
   bool _initialized = false;
@@ -43,6 +49,7 @@ class _CreateInvoiceScreenState extends State<CreateInvoiceScreen> {
   @override
   void initState() {
     super.initState();
+    _step = widget.initialStep;
     _datumCtrl.text = DateFormat('dd-MM-yyyy').format(_datum);
     _taxRate.text = '21';
     _currency.text = '€';
@@ -53,6 +60,27 @@ class _CreateInvoiceScreenState extends State<CreateInvoiceScreen> {
     super.didChangeDependencies();
     if (_initialized) return;
     _initialized = true;
+
+    final inv = widget.editInvoice;
+    if (inv != null) {
+      _naam.text = inv.clientNaam;
+      _kenteken.text = inv.clientKenteken;
+      _productType.text = inv.clientProductType;
+      _kmstand.text = inv.clientKmstand;
+      _adres.text = inv.clientAdres;
+      _telefoonnummer.text = inv.clientTelefoonnummer;
+      _notes.text = inv.notes;
+      _taxRate.text = inv.taxRate.toStringAsFixed(0);
+      _currency.text = inv.currency;
+      if (inv.clientDatum.isNotEmpty) {
+        try {
+          _datum = DateFormat('dd-MM-yyyy').parse(inv.clientDatum);
+        } catch (_) {}
+        _datumCtrl.text = inv.clientDatum;
+      }
+      context.read<InvoiceProvider>().startEditDraft(inv);
+      return;
+    }
 
     final business = context.read<BusinessProvider>().businessInfo;
     if (business != null) {
@@ -129,9 +157,13 @@ class _CreateInvoiceScreenState extends State<CreateInvoiceScreen> {
     try {
       final saved = await context.read<InvoiceProvider>().saveDraft();
       if (!mounted) return;
-      Navigator.of(context).pushReplacement(
-        MaterialPageRoute(builder: (_) => InvoicePreviewScreen(invoice: saved)),
-      );
+      if (widget.editInvoice != null) {
+        Navigator.of(context).pop(saved);
+      } else {
+        Navigator.of(context).pushReplacement(
+          MaterialPageRoute(builder: (_) => InvoicePreviewScreen(invoice: saved)),
+        );
+      }
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -188,7 +220,7 @@ class _CreateInvoiceScreenState extends State<CreateInvoiceScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Nieuwe factuur'),
+        title: Text(widget.editInvoice != null ? 'Factuur bewerken' : 'Nieuwe factuur'),
         leading: IconButton(
           icon: const Icon(Icons.close),
           onPressed: () {

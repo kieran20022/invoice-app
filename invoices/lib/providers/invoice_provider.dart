@@ -47,6 +47,11 @@ class InvoiceProvider extends ChangeNotifier {
 
   // ── Draft Management ───────────────────────────────────────────────────────
 
+  void startEditDraft(Invoice invoice) {
+    _draft = invoice;
+    notifyListeners();
+  }
+
   void startNewDraft(BusinessInfo business) {
     final now = DateTime.now();
     _draft = Invoice(
@@ -149,6 +154,14 @@ class InvoiceProvider extends ChangeNotifier {
 
   Future<Invoice> saveDraft() async {
     if (_userId == null || _draft == null) throw Exception('Geen concept of gebruiker');
+
+    if (_draft!.id.isNotEmpty) {
+      await _firestore.saveInvoice(_userId!, _draft!);
+      final saved = _draft!;
+      _draft = null;
+      notifyListeners();
+      return saved;
+    }
 
     final invoiceNumber = await _firestore.incrementAndGetInvoiceNumber(_userId!);
     final prefix = _draft!.businessInvoicePrefix.isEmpty ? 'F' : _draft!.businessInvoicePrefix;

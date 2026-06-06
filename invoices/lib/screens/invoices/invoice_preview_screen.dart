@@ -6,6 +6,7 @@ import '../../config/theme.dart';
 import '../../models/invoice.dart';
 import '../../providers/business_provider.dart';
 import '../../providers/invoice_provider.dart';
+import 'create_invoice_screen.dart';
 import '../../services/email_service.dart';
 import '../../services/pdf_service.dart';
 
@@ -121,14 +122,23 @@ class _InvoicePreviewScreenState extends State<InvoicePreviewScreen> {
             ),
             child: Row(
               children: [
+                OutlinedButton(
+                  onPressed: () => _editInvoice(),
+                  style: OutlinedButton.styleFrom(
+                    minimumSize: const Size(48, 48),
+                    padding: EdgeInsets.zero,
+                  ),
+                  child: const Icon(Icons.edit_outlined, size: 20),
+                ),
+                const SizedBox(width: 8),
                 Expanded(
                   child: OutlinedButton.icon(
                     onPressed: () => _downloadPdf(logoBytes),
                     icon: const Icon(Icons.download_outlined, size: 18),
-                    label: const Text('PDF downloaden'),
+                    label: const Text('PDF'),
                   ),
                 ),
-                const SizedBox(width: 12),
+                const SizedBox(width: 8),
                 Expanded(
                   child: ElevatedButton.icon(
                     onPressed: _sending ? null : () => _shareInvoice(logoBytes),
@@ -151,6 +161,21 @@ class _InvoicePreviewScreenState extends State<InvoicePreviewScreen> {
         ],
       ),
     );
+  }
+
+  Future<void> _editInvoice() async {
+    final updated = await Navigator.push<Invoice>(
+      context,
+      MaterialPageRoute(
+        builder: (_) => CreateInvoiceScreen(
+          editInvoice: _invoice,
+          initialStep: 1,
+        ),
+      ),
+    );
+    if (updated != null && mounted) {
+      setState(() => _invoice = updated);
+    }
   }
 
   Future<void> _downloadPdf(Uint8List? logoBytes) async {
