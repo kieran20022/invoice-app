@@ -38,6 +38,15 @@ class FirestoreService {
         .set({'favoriteCategories': categories}, SetOptions(merge: true));
   }
 
+  Future<void> saveCategoryOrder(String userId, List<String> order) async {
+    await _db
+        .collection('users')
+        .doc(userId)
+        .collection('settings')
+        .doc('business')
+        .set({'categoryOrder': order}, SetOptions(merge: true));
+  }
+
   // Merge-writes only the logo so it survives even before full business info is saved.
   Future<void> saveLogoUrl(String userId, String? logoBase64) async {
     await _db

@@ -20,6 +20,7 @@ class BusinessProvider extends ChangeNotifier {
   bool get isSaving => _isSaving;
   List<String> get favoriteCategories =>
       _businessInfo?.favoriteCategories ?? [];
+  List<String> get categoryOrder => _businessInfo?.categoryOrder ?? [];
 
   ThemeMode get themeMode => switch (_businessInfo?.themeMode) {
         'light' => ThemeMode.light,
@@ -89,6 +90,11 @@ class BusinessProvider extends ChangeNotifier {
       current.add(category);
     }
     await _firestore.saveFavoriteCategories(_userId!, current);
+  }
+
+  Future<void> saveCategoryOrder(List<String> order) async {
+    if (_userId == null) return;
+    await _firestore.saveCategoryOrder(_userId!, order);
   }
 
   Future<void> removeLogo() async {

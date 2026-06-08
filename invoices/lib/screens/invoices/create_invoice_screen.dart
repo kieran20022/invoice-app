@@ -196,13 +196,11 @@ class _CreateInvoiceScreenState extends State<CreateInvoiceScreen> {
       );
       return;
     }
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => ProductPickerScreen(products: products),
       ),
-      builder: (ctx) => _ProductPickerSheet(products: products),
     );
   }
 
@@ -942,335 +940,488 @@ class _QtyBtn extends StatelessWidget {
   }
 }
 
-class _ProductPickerSheet extends StatefulWidget {
+// ── Product Picker Screen ────────────────────────────────────────────────────
+
+class ProductPickerScreen extends StatefulWidget {
   final List<Product> products;
-  const _ProductPickerSheet({required this.products});
+  const ProductPickerScreen({super.key, required this.products});
 
   @override
-  State<_ProductPickerSheet> createState() => _ProductPickerSheetState();
+  State<ProductPickerScreen> createState() => _ProductPickerScreenState();
 }
 
-class _ProductPickerSheetState extends State<_ProductPickerSheet> {
+class _ProductPickerScreenState extends State<ProductPickerScreen> {
+  String? _expandedCategory; // null = none open; '' = uncategorized open
+  bool _reorderMode = false;
+  late List<String> _orderedCategories;
   final _searchCtrl = TextEditingController();
-  final _searchFocus = FocusNode();
-  String? _selectedCategory;
-
-  List<String> get _categories {
-    final cats =
-        widget.products
-            .map((p) => p.category)
-            .where((c) => c.isNotEmpty)
-            .toSet()
-            .toList()
-          ..sort();
-    return cats;
-  }
-
-  /// Returns the raw category filter string from `#text` (lowercased, no `#`),
-  /// or null if the search doesn't start with `#`.
-  String? get _hashFilter {
-    final raw = _searchCtrl.text.trim();
-    if (!raw.startsWith('#')) return null;
-    final part = raw.substring(1).split(' ').first.toLowerCase();
-    return part.isEmpty ? null : part;
-  }
-
-  List<Product> get _filtered {
-    final raw = _searchCtrl.text.trim();
-
-    if (raw.startsWith('#')) {
-      final spaceIdx = raw.indexOf(' ');
-      final categoryPart = raw.substring(1, spaceIdx == -1 ? raw.length : spaceIdx).toLowerCase();
-      final searchPart = spaceIdx == -1 ? '' : raw.substring(spaceIdx + 1).toLowerCase().trim();
-
-      var list = categoryPart.isEmpty
-          ? widget.products
-          : widget.products.where((p) => p.category.contains(categoryPart)).toList();
-
-      if (searchPart.isNotEmpty) {
-        list = list
-            .where((p) =>
-                p.name.toLowerCase().contains(searchPart) ||
-                p.description.toLowerCase().contains(searchPart))
-            .toList();
-      }
-      return list;
-    }
-
-    var list = widget.products;
-    if (_selectedCategory != null) {
-      list = list.where((p) => p.category == _selectedCategory).toList();
-    }
-    final q = raw.toLowerCase();
-    if (q.isNotEmpty) {
-      list = list
-          .where((p) =>
-              p.name.toLowerCase().contains(q) ||
-              p.description.toLowerCase().contains(q))
-          .toList();
-    }
-    return list;
-  }
+  String _query = '';
 
   @override
   void initState() {
     super.initState();
-    _searchCtrl.addListener(() => setState(() {}));
+    _buildOrder();
+    _searchCtrl.addListener(() {
+      setState(() => _query = _searchCtrl.text.trim().toLowerCase());
+    });
   }
 
   @override
   void dispose() {
     _searchCtrl.dispose();
-    _searchFocus.dispose();
     super.dispose();
+  }
+
+  void _buildOrder() {
+    final savedOrder = context.read<BusinessProvider>().categoryOrder;
+    final allCats = widget.products
+        .map((p) => p.category)
+        .where((c) => c.isNotEmpty)
+        .toSet();
+    final ordered = savedOrder.where(allCats.contains).toList();
+    final remaining = (allCats.difference(ordered.toSet()).toList()..sort());
+    ordered.addAll(remaining);
+    _orderedCategories = ordered;
+  }
+
+  List<Product> _productsFor(String cat) =>
+      widget.products.where((p) => p.category == cat).toList();
+
+  List<Product> get _uncategorized =>
+      widget.products.where((p) => p.category.isEmpty).toList();
+
+  /// Grouped search results: each entry is a (label, products) pair.
+  /// Category name match → show all products in that category.
+  /// Otherwise → show only products whose name/description matches.
+  List<({String label, List<Product> products})> get _searchGroups {
+    final q = _query;
+    final results = <({String label, List<Product> products})>[];
+    for (final cat in _orderedCategories) {
+      final products = _productsFor(cat);
+      final catMatches = cat.toLowerCase().contains(q);
+      final matched = catMatches
+          ? products
+          : products
+              .where((p) =>
+                  p.name.toLowerCase().contains(q) ||
+                  p.description.toLowerCase().contains(q))
+              .toList();
+      if (matched.isNotEmpty) {
+        results.add((label: _toTitleCase(cat), products: matched));
+      }
+    }
+    final matchedUncat = _uncategorized
+        .where((p) =>
+            p.name.toLowerCase().contains(q) ||
+            p.description.toLowerCase().contains(q))
+        .toList();
+    if (matchedUncat.isNotEmpty) {
+      results.add((label: 'Overig', products: matchedUncat));
+    }
+    return results;
+  }
+
+  void _addToInvoice(BuildContext ctx, Product p) {
+    final provider = ctx.read<InvoiceProvider>();
+    provider.addDraftItem(
+      provider.createItem(
+        omschrijving: p.name,
+        aantal: 1,
+        prijsExBtw: p.price,
+        productId: p.id,
+      ),
+    );
+    Navigator.pop(ctx);
+  }
+
+  Widget _searchBar(BuildContext context) {
+    return Container(
+      decoration: BoxDecoration(
+        color: AppTheme.surf(context),
+        border: Border(top: BorderSide(color: AppTheme.borderOf(context))),
+      ),
+      child: SafeArea(
+        top: false,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(16, 10, 16, 10),
+          child: TextField(
+            controller: _searchCtrl,
+            textInputAction: TextInputAction.search,
+            decoration: InputDecoration(
+              hintText: 'Zoeken op categorie of product...',
+              prefixIcon: const Icon(Icons.search, size: 20),
+              isDense: true,
+              suffixIcon: _query.isNotEmpty
+                  ? IconButton(
+                      icon: const Icon(Icons.clear, size: 18),
+                      onPressed: _searchCtrl.clear,
+                    )
+                  : null,
+            ),
+          ),
+        ),
+      ),
+    );
   }
 
   @override
   Widget build(BuildContext context) {
-    final currency = context.read<InvoiceProvider>().draft?.currency ?? '€';
-    final categories = _categories;
-    final filtered = _filtered;
-    final favorites = context.watch<BusinessProvider>().favoriteCategories;
-    final favCategories = categories
-        .where((c) => favorites.contains(c))
-        .toList();
-    final hashFilter = _hashFilter;
-
-    return DraggableScrollableSheet(
-      expand: false,
-      initialChildSize: 0.75,
-      minChildSize: 0.4,
-      maxChildSize: 0.95,
-      builder: (_, scrollCtrl) => Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // Header
-          Padding(
-            padding: const EdgeInsets.fromLTRB(20, 20, 20, 8),
-            child: Row(
-              children: [
-                const Text(
-                  'Product selecteren',
-                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
-                ),
-                const Spacer(),
-                IconButton(
-                  icon: const Icon(Icons.close),
-                  onPressed: () => Navigator.pop(context),
-                ),
-              ],
+    if (_reorderMode) {
+      return Scaffold(
+        appBar: AppBar(
+          title: const Text('Volgorde aanpassen'),
+          actions: [
+            TextButton(
+              onPressed: () {
+                context.read<BusinessProvider>().saveCategoryOrder(_orderedCategories);
+                setState(() => _reorderMode = false);
+              },
+              child: const Text('Klaar'),
             ),
-          ),
-          // Search bar
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16),
-            child: Row(
-              children: [
-                Expanded(
-                  child: TextField(
-                    controller: _searchCtrl,
-                    focusNode: _searchFocus,
-                    textInputAction: TextInputAction.search,
-                    decoration: InputDecoration(
-                      hintText: 'Zoeken... of #categorie product',
-                      prefixIcon: const Icon(Icons.search),
-                      isDense: true,
-                      suffixIcon: _searchCtrl.text.isNotEmpty
-                          ? IconButton(
-                              icon: const Icon(Icons.clear),
-                              onPressed: () => _searchCtrl.clear(),
-                            )
-                          : null,
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 8),
-                OutlinedButton(
-                  onPressed: () {
-                    if (!_searchCtrl.text.startsWith('#')) {
-                      _searchCtrl.value = TextEditingValue(
-                        text: '#${_searchCtrl.text}',
-                        selection: const TextSelection.collapsed(offset: 1),
-                      );
-                    }
-                    _searchFocus.requestFocus();
-                  },
-                  style: OutlinedButton.styleFrom(
-                    minimumSize: const Size(44, 44),
-                    padding: EdgeInsets.zero,
-                    side: BorderSide(color: AppTheme.primary.withAlpha(80)),
-                  ),
-                  child: const Text(
-                    '#',
-                    style: TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.w600,
-                      color: AppTheme.primary,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-          // Category chips
-          if (categories.isNotEmpty) ...[
-            const SizedBox(height: 10),
-            SingleChildScrollView(
-              scrollDirection: Axis.horizontal,
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              child: Row(
-                children: [
-                  _CategoryChip(
-                    label: 'Alle',
-                    selected: hashFilter == null && _selectedCategory == null,
-                    onTap: () => setState(() => _selectedCategory = null),
-                  ),
-                  ...categories.map(
-                    (cat) => Padding(
-                      padding: const EdgeInsets.only(left: 8),
-                      child: _CategoryChip(
-                        label: _toTitleCase(cat),
-                        selected: hashFilter != null
-                            ? cat.contains(hashFilter)
-                            : _selectedCategory == cat,
-                        isFavorite: favorites.contains(cat),
-                        onTap: () => setState(() => _selectedCategory = cat),
-                        onLongPress: () => context
-                            .read<BusinessProvider>()
-                            .toggleFavoriteCategory(cat),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            if (favCategories.isNotEmpty) ...[
-              SingleChildScrollView(
-                scrollDirection: Axis.horizontal,
-                padding: const EdgeInsets.symmetric(horizontal: 16),
-                child: Row(
-                  children: favCategories
-                      .map(
-                        (cat) => Padding(
-                          padding: const EdgeInsets.only(right: 8),
-                          child: _CategoryChip(
-                            label: _toTitleCase(cat),
-                            selected: hashFilter != null
-                                ? cat.contains(hashFilter)
-                                : _selectedCategory == cat,
-                            isFavorite: true,
-                            onTap: () =>
-                                setState(() => _selectedCategory = cat),
-                            onLongPress: () => context
-                                .read<BusinessProvider>()
-                                .toggleFavoriteCategory(cat),
-                          ),
-                        ),
-                      )
-                      .toList(),
-                ),
-              ),
-            ],
           ],
-          const Divider(height: 16),
-          // Product list
-          Expanded(
-            child: filtered.isEmpty
-                ? const Center(
-                    child: Padding(
-                      padding: EdgeInsets.all(24),
-                      child: Text(
-                        'Geen producten gevonden.',
-                        style: TextStyle(color: AppTheme.textSecondary),
+        ),
+        body: ReorderableListView.builder(
+          padding: const EdgeInsets.symmetric(vertical: 8),
+          itemCount: _orderedCategories.length,
+          onReorder: (oldIndex, newIndex) {
+            setState(() {
+              if (newIndex > oldIndex) newIndex--;
+              final cat = _orderedCategories.removeAt(oldIndex);
+              _orderedCategories.insert(newIndex, cat);
+            });
+          },
+          itemBuilder: (ctx, i) {
+            final cat = _orderedCategories[i];
+            final count = _productsFor(cat).length;
+            return ListTile(
+              key: ValueKey(cat),
+              contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+              title: Text(
+                _toTitleCase(cat),
+                style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 15),
+              ),
+              subtitle: Text('$count product${count == 1 ? '' : 'en'}'),
+              trailing: const Icon(Icons.drag_handle, color: AppTheme.textSecondary),
+            );
+          },
+        ),
+      );
+    }
+
+    final draft = context.read<InvoiceProvider>().draft;
+    final currency = draft?.currency ?? '€';
+    final taxRate = draft?.taxRate ?? 21.0;
+    final uncategorized = _uncategorized;
+    final hasCategories = _orderedCategories.isNotEmpty;
+
+    // ── Search results view ───────────────────────────────────────────────
+    if (_query.isNotEmpty) {
+      final groups = _searchGroups;
+      return Scaffold(
+        appBar: AppBar(title: const Text('Product selecteren')),
+        body: Column(
+          children: [
+            Expanded(
+              child: groups.isEmpty
+                  ? Center(
+                      child: Padding(
+                        padding: const EdgeInsets.all(32),
+                        child: Text(
+                          'Geen resultaten voor "$_query".',
+                          style: const TextStyle(color: AppTheme.textSecondary),
+                          textAlign: TextAlign.center,
+                        ),
                       ),
+                    )
+                  : ListView.builder(
+                      itemCount: groups.fold<int>(0, (n, g) => n + 1 + g.products.length),
+                      itemBuilder: (ctx, index) {
+                        int cursor = 0;
+                        for (final group in groups) {
+                          if (index == cursor) {
+                            return _SearchGroupHeader(label: group.label);
+                          }
+                          cursor++;
+                          if (index < cursor + group.products.length) {
+                            final p = group.products[index - cursor];
+                            return _ProductTile(
+                              product: p,
+                              currency: currency,
+                              taxRate: taxRate,
+                              onTap: () => _addToInvoice(ctx, p),
+                            );
+                          }
+                          cursor += group.products.length;
+                        }
+                        return const SizedBox.shrink();
+                      },
                     ),
-                  )
-                : ListView.builder(
-                    controller: scrollCtrl,
-                    itemCount: filtered.length,
-                    itemBuilder: (ctx, i) {
-                      final p = filtered[i];
-                      return ListTile(
-                        title: Text(
-                          p.name,
-                          style: const TextStyle(fontWeight: FontWeight.w600),
-                        ),
-                        subtitle: p.description.isNotEmpty
-                            ? Text(p.description)
-                            : null,
-                        trailing: Text(
-                          '$currency${p.price.toStringAsFixed(2)} ex. BTW',
-                          style: const TextStyle(
-                            color: AppTheme.primary,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                        onTap: () {
-                          final item = context
-                              .read<InvoiceProvider>()
-                              .createItem(
-                                omschrijving: p.name,
-                                aantal: 1,
-                                prijsExBtw: p.price,
-                                productId: p.id,
-                              );
-                          context.read<InvoiceProvider>().addDraftItem(item);
-                          Navigator.pop(context);
-                        },
-                      );
-                    },
-                  ),
+            ),
+            _searchBar(context),
+          ],
+        ),
+      );
+    }
+
+    // ── No categories at all: flat list ───────────────────────────────────
+    if (!hasCategories) {
+      return Scaffold(
+        appBar: AppBar(title: const Text('Product selecteren')),
+        body: Column(
+          children: [
+            Expanded(
+              child: ListView.builder(
+                itemCount: uncategorized.length,
+                itemBuilder: (ctx, i) {
+                  final p = uncategorized[i];
+                  return _ProductTile(
+                    product: p,
+                    currency: currency,
+                    taxRate: taxRate,
+                    onTap: () => _addToInvoice(ctx, p),
+                  );
+                },
+              ),
+            ),
+            _searchBar(context),
+          ],
+        ),
+      );
+    }
+
+    // ── Normal accordion view ─────────────────────────────────────────────
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Product selecteren'),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.sort),
+            tooltip: 'Volgorde aanpassen',
+            onPressed: () => setState(() => _reorderMode = true),
           ),
-          const SizedBox(height: 16),
+        ],
+      ),
+      body: Column(
+        children: [
+          Expanded(
+            child: CustomScrollView(
+        slivers: [
+          for (final cat in _orderedCategories) ...[
+            SliverPersistentHeader(
+              pinned: true,
+              delegate: _CategoryHeaderDelegate(
+                label: _toTitleCase(cat),
+                count: _productsFor(cat).length,
+                isExpanded: _expandedCategory == cat,
+                onTap: () => setState(() {
+                  _expandedCategory = _expandedCategory == cat ? null : cat;
+                }),
+              ),
+            ),
+            if (_expandedCategory == cat)
+              SliverList(
+                delegate: SliverChildBuilderDelegate(
+                  (ctx, i) {
+                    final p = _productsFor(cat)[i];
+                    return _ProductTile(
+                      product: p,
+                      currency: currency,
+                      taxRate: taxRate,
+                      onTap: () => _addToInvoice(ctx, p),
+                    );
+                  },
+                  childCount: _productsFor(cat).length,
+                ),
+              ),
+          ],
+          if (uncategorized.isNotEmpty) ...[
+            SliverPersistentHeader(
+              pinned: true,
+              delegate: _CategoryHeaderDelegate(
+                label: 'Overig',
+                count: uncategorized.length,
+                isExpanded: _expandedCategory == '',
+                onTap: () => setState(() {
+                  _expandedCategory = _expandedCategory == '' ? null : '';
+                }),
+              ),
+            ),
+            if (_expandedCategory == '')
+              SliverList(
+                delegate: SliverChildBuilderDelegate(
+                  (ctx, i) {
+                    final p = uncategorized[i];
+                    return _ProductTile(
+                      product: p,
+                      currency: currency,
+                      taxRate: taxRate,
+                      onTap: () => _addToInvoice(ctx, p),
+                    );
+                  },
+                  childCount: uncategorized.length,
+                ),
+              ),
+          ],
+          const SliverToBoxAdapter(child: SizedBox(height: 32)),
+        ],
+            ),
+          ),
+          _searchBar(context),
         ],
       ),
     );
   }
 }
 
-class _CategoryChip extends StatelessWidget {
+class _SearchGroupHeader extends StatelessWidget {
   final String label;
-  final bool selected;
-  final bool isFavorite;
-  final VoidCallback onTap;
-  final VoidCallback? onLongPress;
+  const _SearchGroupHeader({required this.label});
 
-  const _CategoryChip({
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
+      color: AppTheme.bg(context),
+      child: Text(
+        label,
+        style: TextStyle(
+          fontSize: 12,
+          fontWeight: FontWeight.w700,
+          color: AppTheme.primary,
+          letterSpacing: 0.5,
+        ),
+      ),
+    );
+  }
+}
+
+class _CategoryHeaderDelegate extends SliverPersistentHeaderDelegate {
+  final String label;
+  final int count;
+  final bool isExpanded;
+  final VoidCallback onTap;
+
+  const _CategoryHeaderDelegate({
     required this.label,
-    required this.selected,
-    this.isFavorite = false,
+    required this.count,
+    required this.isExpanded,
     required this.onTap,
-    this.onLongPress,
+  });
+
+  static const double _h = 52.0;
+
+  @override
+  double get minExtent => _h;
+  @override
+  double get maxExtent => _h;
+
+  @override
+  Widget build(BuildContext context, double shrinkOffset, bool overlapsContent) {
+    final theme = Theme.of(context);
+    return Material(
+      color: overlapsContent
+          ? theme.colorScheme.surface
+          : AppTheme.surf(context),
+      elevation: overlapsContent ? 1 : 0,
+      shadowColor: theme.shadowColor.withAlpha(40),
+      child: InkWell(
+        onTap: onTap,
+        child: Container(
+          height: _h,
+          padding: const EdgeInsets.symmetric(horizontal: 16),
+          decoration: BoxDecoration(
+            border: Border(
+              bottom: BorderSide(
+                color: isExpanded
+                    ? AppTheme.primary.withAlpha(80)
+                    : AppTheme.borderOf(context),
+              ),
+            ),
+          ),
+          child: Row(
+            children: [
+              Text(
+                label,
+                style: TextStyle(
+                  fontWeight: FontWeight.w700,
+                  fontSize: 15,
+                  color: isExpanded
+                      ? AppTheme.primary
+                      : AppTheme.onSurface(context),
+                ),
+              ),
+              const SizedBox(width: 8),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                decoration: BoxDecoration(
+                  color: AppTheme.primary.withAlpha(isExpanded ? 30 : 18),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Text(
+                  '$count',
+                  style: const TextStyle(
+                    fontSize: 11,
+                    color: AppTheme.primary,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+              const Spacer(),
+              AnimatedRotation(
+                turns: isExpanded ? 0.5 : 0,
+                duration: const Duration(milliseconds: 200),
+                child: Icon(
+                  Icons.expand_more,
+                  color: isExpanded
+                      ? AppTheme.primary
+                      : AppTheme.onSurfaceVariant(context),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  @override
+  bool shouldRebuild(_CategoryHeaderDelegate old) =>
+      old.isExpanded != isExpanded ||
+      old.count != count ||
+      old.label != label;
+}
+
+class _ProductTile extends StatelessWidget {
+  final Product product;
+  final String currency;
+  final double taxRate;
+  final VoidCallback onTap;
+
+  const _ProductTile({
+    required this.product,
+    required this.currency,
+    required this.taxRate,
+    required this.onTap,
   });
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
-      onLongPress: onLongPress,
-      child: ChoiceChip(
-        label: Text(label),
-        selected: selected,
-        onSelected: (_) => onTap(),
-        showCheckmark: false,
-        selectedColor: AppTheme.primary,
-        backgroundColor: isFavorite
-            ? Colors.amber.withAlpha(45)
-            : AppTheme.primary.withAlpha(15),
-        side: BorderSide(
-          color: selected
-              ? AppTheme.primary
-              : isFavorite
-                  ? Colors.amber.withAlpha(130)
-                  : AppTheme.primary.withAlpha(50),
-        ),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        labelStyle: TextStyle(
-          color: selected ? Colors.white : AppTheme.primary,
-          fontSize: 13,
-          fontWeight: FontWeight.w500,
-        ),
-        padding: const EdgeInsets.symmetric(horizontal: 4),
+    final inclPrice = product.price * (1 + taxRate / 100);
+    return ListTile(
+      title: Text(
+        product.name,
+        style: const TextStyle(fontWeight: FontWeight.w600),
       ),
+      subtitle: product.description.isNotEmpty ? Text(product.description) : null,
+      trailing: Text(
+        '$currency${inclPrice.toStringAsFixed(2)} incl. BTW',
+        style: const TextStyle(
+          color: AppTheme.primary,
+          fontWeight: FontWeight.w600,
+          fontSize: 13,
+        ),
+      ),
+      onTap: onTap,
     );
   }
 }

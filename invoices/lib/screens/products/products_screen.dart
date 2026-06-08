@@ -19,140 +19,360 @@ class ProductsScreen extends StatefulWidget {
 }
 
 class _ProductsScreenState extends State<ProductsScreen> {
-  String? _selectedCategory;
+  String? _expandedCategory;
+  List<String> _orderedCategories = [];
+  final _searchCtrl = TextEditingController();
+  final _searchFocusNode = FocusNode();
+  String _query = '';
+
+  @override
+  void initState() {
+    super.initState();
+    _searchCtrl.addListener(() {
+      setState(() => _query = _searchCtrl.text.trim().toLowerCase());
+    });
+  }
+
+  @override
+  void dispose() {
+    _searchCtrl.dispose();
+    _searchFocusNode.dispose();
+    super.dispose();
+  }
+
+  void _syncOrder(List<Product> products) {
+    final savedOrder = context.read<BusinessProvider>().categoryOrder;
+    final allCats =
+        products.map((p) => p.category).where((c) => c.isNotEmpty).toSet();
+    final ordered = savedOrder.where(allCats.contains).toList();
+    final remaining = (allCats.difference(ordered.toSet()).toList()..sort());
+    ordered.addAll(remaining);
+    _orderedCategories = ordered;
+  }
+
+  List<Product> _productsFor(List<Product> products, String cat) =>
+      products.where((p) => p.category == cat).toList();
+
+  List<Product> _uncategorized(List<Product> products) =>
+      products.where((p) => p.category.isEmpty).toList();
+
+  List<({String label, List<Product> products})> _searchGroups(
+    List<Product> allProducts,
+  ) {
+    final q = _query;
+    final results = <({String label, List<Product> products})>[];
+    for (final cat in _orderedCategories) {
+      final catProducts = _productsFor(allProducts, cat);
+      final catMatches = cat.toLowerCase().contains(q);
+      final matched = catMatches
+          ? catProducts
+          : catProducts
+              .where(
+                (p) =>
+                    p.name.toLowerCase().contains(q) ||
+                    p.description.toLowerCase().contains(q),
+              )
+              .toList();
+      if (matched.isNotEmpty) {
+        results.add((label: _toTitleCase(cat), products: matched));
+      }
+    }
+    final matchedUncat = _uncategorized(allProducts)
+        .where(
+          (p) =>
+              p.name.toLowerCase().contains(q) ||
+              p.description.toLowerCase().contains(q),
+        )
+        .toList();
+    if (matchedUncat.isNotEmpty) {
+      results.add((label: 'Overig', products: matchedUncat));
+    }
+    return results;
+  }
+
+  Widget _searchField({bool showSort = false, VoidCallback? onSort}) {
+    return Builder(
+      builder: (context) => Container(
+        color: AppTheme.surf(context),
+        padding: EdgeInsets.fromLTRB(16, 12, showSort ? 4 : 16, 8),
+        child: Row(
+          children: [
+            Expanded(
+              child: TextField(
+                controller: _searchCtrl,
+                focusNode: _searchFocusNode,
+                textInputAction: TextInputAction.search,
+                decoration: InputDecoration(
+                  hintText: 'Zoeken op categorie of product...',
+                  prefixIcon: const Icon(Icons.search, size: 20),
+                  contentPadding: const EdgeInsets.symmetric(vertical: 10),
+                  fillColor: AppTheme.bg(context),
+                  filled: true,
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(10),
+                    borderSide: BorderSide(color: AppTheme.borderOf(context)),
+                  ),
+                  enabledBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(10),
+                    borderSide: BorderSide(color: AppTheme.borderOf(context)),
+                  ),
+                  focusedBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(10),
+                    borderSide: const BorderSide(
+                      color: AppTheme.primary,
+                      width: 2,
+                    ),
+                  ),
+                  suffixIcon: _query.isNotEmpty
+                      ? IconButton(
+                          icon: const Icon(Icons.clear, size: 18),
+                          onPressed: _searchCtrl.clear,
+                        )
+                      : null,
+                ),
+              ),
+            ),
+            if (showSort && onSort != null)
+              IconButton(
+                icon: const Icon(Icons.sort),
+                tooltip: 'Volgorde aanpassen',
+                onPressed: onSort,
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildFabs({required VoidCallback onAdd}) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        FloatingActionButton(
+          heroTag: 'search_fab',
+          onPressed: () => _searchFocusNode.requestFocus(),
+          backgroundColor: AppTheme.primary,
+          child: const Icon(Icons.search, color: Colors.white),
+        ),
+        const SizedBox(width: 12),
+        FloatingActionButton.extended(
+          heroTag: 'add_fab',
+          onPressed: onAdd,
+          backgroundColor: AppTheme.primary,
+          icon: const Icon(Icons.add, color: Colors.white),
+          label: const Text(
+            'Product toevoegen',
+            style: TextStyle(color: Colors.white),
+          ),
+        ),
+      ],
+    );
+  }
+
+  void _openReorder(List<Product> allProducts) {
+    final cats = List<String>.from(_orderedCategories);
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => _ReorderScreen(
+          categories: cats,
+          productCount: (cat) => _productsFor(allProducts, cat).length,
+          onSave: (ordered) {
+            context.read<BusinessProvider>().saveCategoryOrder(ordered);
+            setState(() => _orderedCategories = ordered);
+          },
+        ),
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
     final provider = context.watch<ProductProvider>();
     final allProducts = provider.products;
-    final categories = provider.categories;
-    final favorites = context.watch<BusinessProvider>().favoriteCategories;
+    final taxRate =
+        context.watch<BusinessProvider>().businessInfo?.defaultTaxRate ?? 21.0;
 
-    final filtered = _selectedCategory == null
-        ? allProducts
-        : allProducts.where((p) => p.category == _selectedCategory).toList();
+    if (allProducts.isEmpty) {
+      return Scaffold(
+        body: _EmptyState(onAdd: () => _showForm(context, null)),
+      );
+    }
 
-    return Scaffold(
-      body: allProducts.isEmpty
-          ? _EmptyState(onAdd: () => _showForm(context, null))
-          : Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                if (categories.isNotEmpty)
-                  Padding(
-                    padding: const EdgeInsets.fromLTRB(0, 12, 0, 4),
-                    child: SingleChildScrollView(
-                      scrollDirection: Axis.horizontal,
-                      padding: const EdgeInsets.symmetric(horizontal: 16),
-                      child: Row(
-                        children: [
-                          _FilterChip(
-                            label: 'Alle',
-                            selected: _selectedCategory == null,
-                            onTap: () =>
-                                setState(() => _selectedCategory = null),
+    _syncOrder(allProducts);
+    final uncategorized = _uncategorized(allProducts);
+    final hasCategories = _orderedCategories.isNotEmpty;
+
+    // ── Search results ────────────────────────────────────────────────────
+    if (_query.isNotEmpty) {
+      final groups = _searchGroups(allProducts);
+      return Scaffold(
+        body: Column(
+          children: [
+            _searchField(),
+            Expanded(
+              child: groups.isEmpty
+                  ? Center(
+                      child: Padding(
+                        padding: const EdgeInsets.all(32),
+                        child: Text(
+                          'Geen resultaten voor "$_query".',
+                          style: const TextStyle(
+                            color: AppTheme.textSecondary,
                           ),
-                          ...categories.map(
-                            (cat) => Padding(
-                              padding: const EdgeInsets.only(left: 8),
-                              child: _FilterChip(
-                                label: _toTitleCase(cat),
-                                selected: _selectedCategory == cat,
-                                isFavorite: favorites.contains(cat),
-                                onTap: () =>
-                                    setState(() => _selectedCategory = cat),
-                                onLongPress: () => _toggleFavorite(cat),
-                              ),
-                            ),
-                          ),
-                        ],
+                          textAlign: TextAlign.center,
+                        ),
                       ),
-                    ),
-                  ),
-                Expanded(
-                  child: filtered.isEmpty
-                      ? Center(
-                          child: Padding(
-                            padding: const EdgeInsets.all(32),
-                            child: Column(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              children: [
-                                const Icon(
-                                  Icons.inventory_2_outlined,
-                                  size: 48,
-                                  color: AppTheme.textSecondary,
-                                ),
-                                const SizedBox(height: 12),
-                                Text(
-                                  'Geen producten in ${_toTitleCase(_selectedCategory!)}',
-                                  style: const TextStyle(
-                                    fontSize: 16,
-                                    fontWeight: FontWeight.w600,
-                                  ),
-                                  textAlign: TextAlign.center,
-                                ),
-                                const SizedBox(height: 16),
-                                SizedBox(
-                                  width: 200,
-                                  child: ElevatedButton.icon(
-                                    onPressed: () => _showForm(
-                                      context,
-                                      null,
-                                      initialCategory: _selectedCategory,
-                                    ),
-                                    icon: const Icon(Icons.add),
-                                    label: const Text('Product toevoegen'),
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        )
-                      : ListView.builder(
-                          padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
-                          itemCount: filtered.length + 1,
-                          itemBuilder: (ctx, i) {
-                            if (i == 0) {
-                              return Padding(
-                                padding: const EdgeInsets.only(bottom: 12),
-                                child: Text(
-                                  '${filtered.length} product${filtered.length == 1 ? '' : 'en'}',
-                                  style: const TextStyle(
-                                    color: AppTheme.textSecondary,
-                                    fontSize: 13,
-                                  ),
-                                ),
-                              );
-                            }
-                            final p = filtered[i - 1];
-                            return _ProductCard(
+                    )
+                  : ListView.builder(
+                      padding: const EdgeInsets.only(bottom: 80),
+                      itemCount: groups.fold<int>(
+                        0,
+                        (n, g) => n + 1 + g.products.length,
+                      ),
+                      itemBuilder: (ctx, index) {
+                        int cursor = 0;
+                        for (final group in groups) {
+                          if (index == cursor) {
+                            return _SearchGroupHeader(label: group.label);
+                          }
+                          cursor++;
+                          if (index < cursor + group.products.length) {
+                            final p = group.products[index - cursor];
+                            return _ProductRow(
                               product: p,
+                              taxRate: taxRate,
                               onEdit: () => _showForm(context, p),
                               onDelete: () => _confirmDelete(context, p),
                             );
-                          },
-                        ),
-                ),
-              ],
+                          }
+                          cursor += group.products.length;
+                        }
+                        return const SizedBox.shrink();
+                      },
+                    ),
             ),
-      floatingActionButton: allProducts.isEmpty
-          ? null
-          : FloatingActionButton.extended(
-              heroTag: null,
-              onPressed: () =>
-                  _showForm(context, null, initialCategory: _selectedCategory),
-              backgroundColor: AppTheme.primary,
-              icon: const Icon(Icons.add, color: Colors.white),
-              label: const Text(
-                'Product toevoegen',
-                style: TextStyle(color: Colors.white),
+          ],
+        ),
+        floatingActionButton: _buildFabs(
+          onAdd: () => _showForm(context, null),
+        ),
+      );
+    }
+
+    // ── No categories: flat list ──────────────────────────────────────────
+    if (!hasCategories) {
+      return Scaffold(
+        body: Column(
+          children: [
+            _searchField(),
+            Expanded(
+              child: ListView.builder(
+                padding: const EdgeInsets.only(bottom: 80),
+                itemCount: uncategorized.length,
+                itemBuilder: (ctx, i) {
+                  final p = uncategorized[i];
+                  return _ProductRow(
+                    product: p,
+                    taxRate: taxRate,
+                    onEdit: () => _showForm(context, p),
+                    onDelete: () => _confirmDelete(context, p),
+                  );
+                },
               ),
             ),
-    );
-  }
+          ],
+        ),
+        floatingActionButton: _buildFabs(
+          onAdd: () => _showForm(context, null),
+        ),
+      );
+    }
 
-  void _toggleFavorite(String category) {
-    context.read<BusinessProvider>().toggleFavoriteCategory(category);
+    // ── Accordion view ────────────────────────────────────────────────────
+    return Scaffold(
+      body: Column(
+        children: [
+          _searchField(
+            showSort: _orderedCategories.length > 1,
+            onSort: () => _openReorder(allProducts),
+          ),
+          Expanded(
+            child: CustomScrollView(
+              slivers: [
+                for (final cat in _orderedCategories) ...[
+                  SliverPersistentHeader(
+                    pinned: true,
+                    delegate: _CategoryHeaderDelegate(
+                      label: _toTitleCase(cat),
+                      count: _productsFor(allProducts, cat).length,
+                      isExpanded: _expandedCategory == cat,
+                      onTap: () => setState(() {
+                        _expandedCategory =
+                            _expandedCategory == cat ? null : cat;
+                      }),
+                    ),
+                  ),
+                  if (_expandedCategory == cat)
+                    SliverList(
+                      delegate: SliverChildBuilderDelegate(
+                        (ctx, i) {
+                          final p = _productsFor(allProducts, cat)[i];
+                          return _ProductRow(
+                            product: p,
+                            taxRate: taxRate,
+                            onEdit: () => _showForm(context, p),
+                            onDelete: () => _confirmDelete(context, p),
+                          );
+                        },
+                        childCount: _productsFor(allProducts, cat).length,
+                      ),
+                    ),
+                ],
+                if (uncategorized.isNotEmpty) ...[
+                  SliverPersistentHeader(
+                    pinned: true,
+                    delegate: _CategoryHeaderDelegate(
+                      label: 'Overig',
+                      count: uncategorized.length,
+                      isExpanded: _expandedCategory == '',
+                      onTap: () => setState(() {
+                        _expandedCategory =
+                            _expandedCategory == '' ? null : '';
+                      }),
+                    ),
+                  ),
+                  if (_expandedCategory == '')
+                    SliverList(
+                      delegate: SliverChildBuilderDelegate(
+                        (ctx, i) {
+                          final p = uncategorized[i];
+                          return _ProductRow(
+                            product: p,
+                            taxRate: taxRate,
+                            onEdit: () => _showForm(context, p),
+                            onDelete: () => _confirmDelete(context, p),
+                          );
+                        },
+                        childCount: uncategorized.length,
+                      ),
+                    ),
+                ],
+                const SliverToBoxAdapter(child: SizedBox(height: 80)),
+              ],
+            ),
+          ),
+        ],
+      ),
+      floatingActionButton: _buildFabs(
+        onAdd: () => _showForm(
+          context,
+          null,
+          initialCategory:
+              (_expandedCategory?.isNotEmpty ?? false) ? _expandedCategory : null,
+        ),
+      ),
+    );
   }
 
   void _showForm(
@@ -203,101 +423,277 @@ class _ProductsScreenState extends State<ProductsScreen> {
   }
 }
 
-class _ProductCard extends StatelessWidget {
+// ── Reorder screen ────────────────────────────────────────────────────────────
+
+class _ReorderScreen extends StatefulWidget {
+  final List<String> categories;
+  final int Function(String cat) productCount;
+  final ValueChanged<List<String>> onSave;
+
+  const _ReorderScreen({
+    required this.categories,
+    required this.productCount,
+    required this.onSave,
+  });
+
+  @override
+  State<_ReorderScreen> createState() => _ReorderScreenState();
+}
+
+class _ReorderScreenState extends State<_ReorderScreen> {
+  late List<String> _cats;
+
+  @override
+  void initState() {
+    super.initState();
+    _cats = List.from(widget.categories);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Volgorde aanpassen'),
+        actions: [
+          TextButton(
+            onPressed: () {
+              widget.onSave(_cats);
+              Navigator.pop(context);
+            },
+            child: const Text('Klaar'),
+          ),
+        ],
+      ),
+      body: ReorderableListView.builder(
+        padding: const EdgeInsets.symmetric(vertical: 8),
+        itemCount: _cats.length,
+        onReorder: (oldIndex, newIndex) {
+          setState(() {
+            if (newIndex > oldIndex) newIndex--;
+            final cat = _cats.removeAt(oldIndex);
+            _cats.insert(newIndex, cat);
+          });
+        },
+        itemBuilder: (ctx, i) {
+          final cat = _cats[i];
+          final count = widget.productCount(cat);
+          return ListTile(
+            key: ValueKey(cat),
+            contentPadding: const EdgeInsets.symmetric(
+              horizontal: 16,
+              vertical: 4,
+            ),
+            title: Text(
+              _toTitleCase(cat),
+              style: const TextStyle(
+                fontWeight: FontWeight.w600,
+                fontSize: 15,
+              ),
+            ),
+            subtitle: Text('$count product${count == 1 ? '' : 'en'}'),
+            trailing: const Icon(
+              Icons.drag_handle,
+              color: AppTheme.textSecondary,
+            ),
+          );
+        },
+      ),
+    );
+  }
+}
+
+// ── Product row (accordion tile with edit/delete) ─────────────────────────────
+
+class _ProductRow extends StatelessWidget {
   final Product product;
+  final double taxRate;
   final VoidCallback onEdit;
   final VoidCallback onDelete;
 
-  const _ProductCard({
+  const _ProductRow({
     required this.product,
+    required this.taxRate,
     required this.onEdit,
     required this.onDelete,
   });
 
   @override
   Widget build(BuildContext context) {
-    return Card(
-      margin: const EdgeInsets.only(bottom: 10),
-      child: ListTile(
-        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-        leading: Container(
-          width: 44,
-          height: 44,
+    final inclPrice = product.price * (1 + taxRate / 100);
+    return ListTile(
+      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 2),
+      title: Text(
+        product.name,
+        style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14),
+      ),
+      subtitle: product.description.isNotEmpty
+          ? Text(
+              product.description,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(
+                color: AppTheme.textSecondary,
+                fontSize: 12,
+              ),
+            )
+          : null,
+      trailing: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(
+            '€${inclPrice.toStringAsFixed(2)} incl.',
+            style: const TextStyle(
+              color: AppTheme.primary,
+              fontWeight: FontWeight.w600,
+              fontSize: 13,
+            ),
+          ),
+          const SizedBox(width: 4),
+          IconButton(
+            icon: const Icon(Icons.edit_outlined, size: 18),
+            onPressed: onEdit,
+            color: AppTheme.textSecondary,
+            visualDensity: VisualDensity.compact,
+          ),
+          IconButton(
+            icon: const Icon(Icons.delete_outline, size: 18),
+            onPressed: onDelete,
+            color: AppTheme.error,
+            visualDensity: VisualDensity.compact,
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ── Category accordion header ─────────────────────────────────────────────────
+
+class _CategoryHeaderDelegate extends SliverPersistentHeaderDelegate {
+  final String label;
+  final int count;
+  final bool isExpanded;
+  final VoidCallback onTap;
+
+  const _CategoryHeaderDelegate({
+    required this.label,
+    required this.count,
+    required this.isExpanded,
+    required this.onTap,
+  });
+
+  static const double _h = 52.0;
+
+  @override
+  double get minExtent => _h;
+  @override
+  double get maxExtent => _h;
+
+  @override
+  Widget build(
+    BuildContext context,
+    double shrinkOffset,
+    bool overlapsContent,
+  ) {
+    final theme = Theme.of(context);
+    return Material(
+      color: overlapsContent
+          ? theme.colorScheme.surface
+          : AppTheme.surf(context),
+      elevation: overlapsContent ? 1 : 0,
+      shadowColor: theme.shadowColor.withAlpha(40),
+      child: InkWell(
+        onTap: onTap,
+        child: Container(
+          height: _h,
+          padding: const EdgeInsets.symmetric(horizontal: 16),
           decoration: BoxDecoration(
-            color: AppTheme.primary.withAlpha(26),
-            borderRadius: BorderRadius.circular(10),
+            border: Border(
+              bottom: BorderSide(
+                color: isExpanded
+                    ? AppTheme.primary.withAlpha(80)
+                    : AppTheme.borderOf(context),
+              ),
+            ),
           ),
-          child: const Icon(
-            Icons.inventory_2_outlined,
-            color: AppTheme.primary,
-            size: 22,
-          ),
-        ),
-        title: Text(
-          product.name,
-          style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 15),
-        ),
-        subtitle: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            if (product.category.isNotEmpty) ...[
-              const SizedBox(height: 4),
+          child: Row(
+            children: [
+              Text(
+                label,
+                style: TextStyle(
+                  fontWeight: FontWeight.w700,
+                  fontSize: 15,
+                  color: isExpanded
+                      ? AppTheme.primary
+                      : AppTheme.onSurface(context),
+                ),
+              ),
+              const SizedBox(width: 8),
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                 decoration: BoxDecoration(
-                  color: AppTheme.primary.withAlpha(20),
+                  color: AppTheme.primary.withAlpha(isExpanded ? 30 : 18),
                   borderRadius: BorderRadius.circular(10),
                 ),
                 child: Text(
-                  _toTitleCase(product.category),
+                  '$count',
                   style: const TextStyle(
-                    color: AppTheme.primary,
                     fontSize: 11,
-                    fontWeight: FontWeight.w500,
+                    color: AppTheme.primary,
+                    fontWeight: FontWeight.w600,
                   ),
                 ),
               ),
-              const SizedBox(height: 2),
-            ],
-            if (product.description.isNotEmpty)
-              Text(
-                product.description,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: const TextStyle(
-                  color: AppTheme.textSecondary,
-                  fontSize: 12,
+              const Spacer(),
+              AnimatedRotation(
+                turns: isExpanded ? 0.5 : 0,
+                duration: const Duration(milliseconds: 200),
+                child: Icon(
+                  Icons.expand_more,
+                  color: isExpanded
+                      ? AppTheme.primary
+                      : AppTheme.onSurfaceVariant(context),
                 ),
               ),
-            Text(
-              '€${product.price.toStringAsFixed(2)} ex. BTW / ${product.unit}',
-              style: const TextStyle(
-                color: AppTheme.primary,
-                fontWeight: FontWeight.w600,
-                fontSize: 13,
-              ),
-            ),
-          ],
+            ],
+          ),
         ),
-        trailing: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            IconButton(
-              icon: const Icon(Icons.edit_outlined, size: 20),
-              onPressed: onEdit,
-              color: AppTheme.textSecondary,
-            ),
-            IconButton(
-              icon: const Icon(Icons.delete_outline, size: 20),
-              onPressed: onDelete,
-              color: AppTheme.error,
-            ),
-          ],
+      ),
+    );
+  }
+
+  @override
+  bool shouldRebuild(_CategoryHeaderDelegate old) =>
+      old.isExpanded != isExpanded ||
+      old.count != count ||
+      old.label != label;
+}
+
+// ── Search group header ───────────────────────────────────────────────────────
+
+class _SearchGroupHeader extends StatelessWidget {
+  final String label;
+  const _SearchGroupHeader({required this.label});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
+      color: AppTheme.bg(context),
+      child: Text(
+        label,
+        style: const TextStyle(
+          fontSize: 12,
+          fontWeight: FontWeight.w700,
+          color: AppTheme.primary,
+          letterSpacing: 0.5,
         ),
       ),
     );
   }
 }
+
+// ── Product form (add / edit) ─────────────────────────────────────────────────
 
 class _ProductForm extends StatefulWidget {
   final Product? product;
@@ -545,6 +941,8 @@ class _ProductFormState extends State<_ProductForm> {
   }
 }
 
+// ── Category selector field ───────────────────────────────────────────────────
+
 class _CategorySelectorField extends StatelessWidget {
   final String? selected;
   final List<String> categories;
@@ -596,6 +994,8 @@ class _CategorySelectorField extends StatelessWidget {
     );
   }
 }
+
+// ── Category picker sheet ─────────────────────────────────────────────────────
 
 class _CategoryPickerSheet extends StatefulWidget {
   final List<String> categories;
@@ -755,49 +1155,7 @@ class _CategoryPickerSheetState extends State<_CategoryPickerSheet> {
   }
 }
 
-class _FilterChip extends StatelessWidget {
-  final String label;
-  final bool selected;
-  final bool isFavorite;
-  final VoidCallback onTap;
-  final VoidCallback? onLongPress;
-
-  const _FilterChip({
-    required this.label,
-    required this.selected,
-    this.isFavorite = false,
-    required this.onTap,
-    this.onLongPress,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return GestureDetector(
-      onLongPress: onLongPress,
-      child: ChoiceChip(
-        label: Text(label),
-        selected: selected,
-        onSelected: (_) => onTap(),
-        showCheckmark: false,
-        avatar: isFavorite
-            ? const Icon(Icons.star, size: 14, color: Colors.amber)
-            : null,
-        selectedColor: AppTheme.primary,
-        backgroundColor: AppTheme.primary.withAlpha(15),
-        side: BorderSide(
-          color: selected ? AppTheme.primary : AppTheme.primary.withAlpha(50),
-        ),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        labelStyle: TextStyle(
-          color: selected ? Colors.white : AppTheme.primary,
-          fontSize: 13,
-          fontWeight: FontWeight.w500,
-        ),
-        padding: const EdgeInsets.symmetric(horizontal: 4),
-      ),
-    );
-  }
-}
+// ── Empty state ───────────────────────────────────────────────────────────────
 
 class _EmptyState extends StatelessWidget {
   final VoidCallback onAdd;

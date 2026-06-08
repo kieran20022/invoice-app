@@ -18,6 +18,7 @@ class BusinessInfo {
   final String? defaultNotes;
   final String emailTemplate;
   final List<String> favoriteCategories;
+  final List<String> categoryOrder;
   final String themeMode;
 
   const BusinessInfo({
@@ -40,6 +41,7 @@ class BusinessInfo {
     this.defaultNotes,
     this.emailTemplate = kDefaultEmailTemplate,
     this.favoriteCategories = const [],
+    this.categoryOrder = const [],
     this.themeMode = 'system',
   });
 
@@ -77,6 +79,7 @@ class BusinessInfo {
         'defaultNotes': defaultNotes,
         'emailTemplate': emailTemplate,
         'favoriteCategories': favoriteCategories,
+        'categoryOrder': categoryOrder,
         'themeMode': themeMode,
       };
 
@@ -100,6 +103,7 @@ class BusinessInfo {
         defaultNotes: map['defaultNotes'],
         emailTemplate: map['emailTemplate'] ?? kDefaultEmailTemplate,
         favoriteCategories: List<String>.from(map['favoriteCategories'] ?? []),
+        categoryOrder: List<String>.from(map['categoryOrder'] ?? []),
         themeMode: map['themeMode'] ?? 'system',
       );
 
@@ -123,6 +127,7 @@ class BusinessInfo {
     String? defaultNotes,
     String? emailTemplate,
     List<String>? favoriteCategories,
+    List<String>? categoryOrder,
     String? themeMode,
   }) =>
       BusinessInfo(
@@ -145,6 +150,7 @@ class BusinessInfo {
         defaultNotes: defaultNotes ?? this.defaultNotes,
         emailTemplate: emailTemplate ?? this.emailTemplate,
         favoriteCategories: favoriteCategories ?? this.favoriteCategories,
+        categoryOrder: categoryOrder ?? this.categoryOrder,
         themeMode: themeMode ?? this.themeMode,
       );
 }
