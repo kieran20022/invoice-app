@@ -14,6 +14,16 @@ class ProductProvider extends ChangeNotifier {
   List<Product> get products => _products;
   bool get isLoaded => _isLoaded;
 
+  List<String> get categories {
+    final cats = _products
+        .map((p) => p.category)
+        .where((c) => c.isNotEmpty)
+        .toSet()
+        .toList();
+    cats.sort();
+    return cats;
+  }
+
   void setUserId(String? userId) {
     if (_userId == userId) return;
     _userId = userId;

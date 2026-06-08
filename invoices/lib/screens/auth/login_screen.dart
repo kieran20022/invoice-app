@@ -11,7 +11,6 @@ class LoginScreen extends StatelessWidget {
     final auth = context.watch<AuthProvider>();
 
     return Scaffold(
-      backgroundColor: AppTheme.background,
       body: SafeArea(
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 32),
@@ -28,20 +27,20 @@ class LoginScreen extends StatelessWidget {
                 child: const Icon(Icons.receipt_long, color: Colors.white, size: 44),
               ),
               const SizedBox(height: 24),
-              const Text(
+              Text(
                 'Facturatie App',
                 style: TextStyle(
                   fontSize: 32,
                   fontWeight: FontWeight.w800,
-                  color: AppTheme.textPrimary,
+                  color: AppTheme.onSurface(context),
                   letterSpacing: -0.5,
                 ),
               ),
               const SizedBox(height: 8),
-              const Text(
+              Text(
                 'Maak professionele facturen in enkele minuten',
                 textAlign: TextAlign.center,
-                style: TextStyle(fontSize: 16, color: AppTheme.textSecondary),
+                style: TextStyle(fontSize: 16, color: AppTheme.onSurfaceVariant(context)),
               ),
               const Spacer(flex: 2),
               ...[
@@ -63,9 +62,10 @@ class LoginScreen extends StatelessWidget {
                         child: Icon(f.$1, color: AppTheme.primary, size: 18),
                       ),
                       const SizedBox(width: 12),
-                      Text(f.$2,
-                          style: const TextStyle(
-                              fontSize: 15, color: AppTheme.textPrimary)),
+                      Text(
+                        f.$2,
+                        style: TextStyle(fontSize: 15, color: AppTheme.onSurface(context)),
+                      ),
                     ],
                   ),
                 ),
@@ -85,11 +85,11 @@ class LoginScreen extends StatelessWidget {
                 height: 52,
                 child: OutlinedButton(
                   style: OutlinedButton.styleFrom(
-                    side: const BorderSide(color: AppTheme.border, width: 1.5),
+                    side: BorderSide(color: AppTheme.borderOf(context), width: 1.5),
                     shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(12)),
-                    backgroundColor: Colors.white,
-                    foregroundColor: AppTheme.textPrimary,
+                    backgroundColor: AppTheme.surf(context),
+                    foregroundColor: AppTheme.onSurface(context),
                   ),
                   onPressed: auth.isLoading
                       ? null
@@ -121,10 +121,10 @@ class LoginScreen extends StatelessWidget {
                 ),
               ),
               const SizedBox(height: 24),
-              const Text(
+              Text(
                 'Door verder te gaan ga je akkoord met onze\nServicevoorwaarden en Privacybeleid',
                 textAlign: TextAlign.center,
-                style: TextStyle(fontSize: 12, color: AppTheme.textSecondary),
+                style: TextStyle(fontSize: 12, color: AppTheme.onSurfaceVariant(context)),
               ),
               const SizedBox(height: 32),
             ],

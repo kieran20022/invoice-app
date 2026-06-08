@@ -34,6 +34,7 @@ class _BusinessInfoScreenState extends State<BusinessInfoScreen> {
   late final TextEditingController _emailTemplate;
 
   bool _initialized = false;
+  String _themeMode = 'system';
 
   @override
   void initState() {
@@ -102,6 +103,7 @@ class _BusinessInfoScreenState extends State<BusinessInfoScreen> {
     _notes.text = info.defaultNotes ?? '';
     _startingNumber.text = info.nextInvoiceNumber.toString();
     _emailTemplate.text = info.emailTemplate;
+    _themeMode = info.themeMode;
   }
 
   Future<void> _save() async {
@@ -134,6 +136,7 @@ class _BusinessInfoScreenState extends State<BusinessInfoScreen> {
       emailTemplate: _emailTemplate.text.trim().isEmpty
           ? BusinessInfo.kDefaultEmailTemplate
           : _emailTemplate.text.trim(),
+      themeMode: _themeMode,
     );
 
     await business.saveBusinessInfo(info);
@@ -218,9 +221,9 @@ class _BusinessInfoScreenState extends State<BusinessInfoScreen> {
                   width: 140,
                   height: 80,
                   decoration: BoxDecoration(
-                    color: AppTheme.background,
+                    color: AppTheme.bg(context),
                     borderRadius: BorderRadius.circular(12),
-                    border: Border.all(color: AppTheme.border, width: 2),
+                    border: Border.all(color: AppTheme.borderOf(context), width: 2),
                   ),
                   child: business.isSaving
                       ? const Center(child: CircularProgressIndicator())
@@ -338,19 +341,52 @@ class _BusinessInfoScreenState extends State<BusinessInfoScreen> {
             Container(
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
-                color: AppTheme.background,
+                color: AppTheme.bg(context),
                 borderRadius: BorderRadius.circular(8),
-                border: Border.all(color: AppTheme.border),
+                border: Border.all(color: AppTheme.borderOf(context)),
               ),
-              child: const Text(
+              child: Text(
                 'Beschikbare variabelen:\n'
                 '{naam} · {voertuig_info} · {kenteken} · {producttype} · {kmstand} · {factuur_nummer} · {bedrijfsnaam} · {datum} · {totaal}\n\n'
                 '{voertuig_info} = "voor het voertuig met kenteken X (Km-stand: Y)" of "voor uw {producttype}"',
-                style: TextStyle(color: AppTheme.textSecondary, fontSize: 11),
+                style: TextStyle(color: AppTheme.onSurfaceVariant(context), fontSize: 11),
               ),
             ),
             const SizedBox(height: 8),
             _field(_emailTemplate, 'Sjabloon', maxLines: 8),
+
+            const SizedBox(height: 20),
+            _SectionHeader(title: 'Thema'),
+            const SizedBox(height: 12),
+            SegmentedButton<String>(
+              segments: const [
+                ButtonSegment(
+                  value: 'light',
+                  label: Text('Licht'),
+                  icon: Icon(Icons.light_mode_outlined),
+                ),
+                ButtonSegment(
+                  value: 'system',
+                  label: Text('Auto'),
+                  icon: Icon(Icons.brightness_auto_outlined),
+                ),
+                ButtonSegment(
+                  value: 'dark',
+                  label: Text('Donker'),
+                  icon: Icon(Icons.dark_mode_outlined),
+                ),
+              ],
+              selected: {_themeMode},
+              onSelectionChanged: (set) =>
+                  setState(() => _themeMode = set.first),
+              style: ButtonStyle(
+                iconColor: WidgetStateProperty.resolveWith(
+                  (s) => s.contains(WidgetState.selected)
+                      ? AppTheme.primary
+                      : AppTheme.onSurfaceVariant(context),
+                ),
+              ),
+            ),
 
             const SizedBox(height: 32),
             ElevatedButton(
@@ -405,10 +441,10 @@ class _SectionHeader extends StatelessWidget {
   @override
   Widget build(BuildContext context) => Text(
     title,
-    style: const TextStyle(
+    style: TextStyle(
       fontSize: 13,
       fontWeight: FontWeight.w700,
-      color: AppTheme.textSecondary,
+      color: AppTheme.onSurfaceVariant(context),
       letterSpacing: 0.5,
     ),
   );

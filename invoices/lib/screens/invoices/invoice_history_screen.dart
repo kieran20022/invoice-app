@@ -32,11 +32,10 @@ class _InvoiceHistoryScreenState extends State<InvoiceHistoryScreen> {
     }).toList();
 
     return Scaffold(
-      backgroundColor: AppTheme.background,
       body: Column(
         children: [
           Container(
-            color: Colors.white,
+            color: AppTheme.surf(context),
             padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
             child: Column(
               children: [
@@ -45,20 +44,19 @@ class _InvoiceHistoryScreenState extends State<InvoiceHistoryScreen> {
                     hintText: 'Zoeken op naam, kenteken of nummer...',
                     prefixIcon: const Icon(Icons.search, size: 20),
                     contentPadding: const EdgeInsets.symmetric(vertical: 10),
-                    fillColor: AppTheme.background,
+                    fillColor: AppTheme.bg(context),
                     filled: true,
                     border: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(10),
-                      borderSide: const BorderSide(color: AppTheme.border),
+                      borderSide: BorderSide(color: AppTheme.borderOf(context)),
                     ),
                     enabledBorder: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(10),
-                      borderSide: const BorderSide(color: AppTheme.border),
+                      borderSide: BorderSide(color: AppTheme.borderOf(context)),
                     ),
                     focusedBorder: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(10),
-                      borderSide:
-                          const BorderSide(color: AppTheme.primary, width: 2),
+                      borderSide: const BorderSide(color: AppTheme.primary, width: 2),
                     ),
                   ),
                   onChanged: (v) => setState(() => _search = v),
@@ -83,7 +81,7 @@ class _InvoiceHistoryScreenState extends State<InvoiceHistoryScreen> {
             ),
           ),
           Container(
-            color: Colors.white,
+            color: AppTheme.surf(context),
             padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
             child: _StatsRow(invoices: provider.invoices),
           ),
@@ -130,19 +128,19 @@ class _StatsRow extends StatelessWidget {
 
     return Row(
       children: [
-        _Stat('Totaal', '$currency${total.toStringAsFixed(0)}', AppTheme.textPrimary),
-        _div(),
+        _Stat('Totaal', '$currency${total.toStringAsFixed(0)}', AppTheme.onSurface(context)),
+        _div(context),
         _Stat('Betaald', '$currency${paid.toStringAsFixed(0)}', const Color(0xFF10B981)),
-        _div(),
+        _div(context),
         _Stat('Openstaand', '$currency${(total - paid).toStringAsFixed(0)}', AppTheme.error),
-        _div(),
-        _Stat('Aantal', '${invoices.length}', AppTheme.textSecondary),
+        _div(context),
+        _Stat('Aantal', '${invoices.length}', AppTheme.onSurfaceVariant(context)),
       ],
     );
   }
 
-  Widget _div() => Container(
-      height: 30, width: 1, color: AppTheme.border,
+  Widget _div(BuildContext context) => Container(
+      height: 30, width: 1, color: AppTheme.borderOf(context),
       margin: const EdgeInsets.symmetric(horizontal: 12));
 }
 
@@ -231,10 +229,10 @@ class _InvoiceCard extends StatelessWidget {
               ),
               Text(
                 '${invoice.currency}${invoice.totaalInclBtw.toStringAsFixed(2)}',
-                style: const TextStyle(
+                style: TextStyle(
                     fontWeight: FontWeight.w700,
                     fontSize: 15,
-                    color: AppTheme.textPrimary),
+                    color: AppTheme.onSurface(context)),
               ),
               const SizedBox(width: 4),
               const Icon(Icons.chevron_right, color: AppTheme.textSecondary),
@@ -262,11 +260,11 @@ class _FilterChip extends StatelessWidget {
         onSelected: (_) => onTap(),
         selectedColor: AppTheme.primary.withAlpha(26),
         labelStyle: TextStyle(
-          color: selected ? AppTheme.primary : AppTheme.textSecondary,
+          color: selected ? AppTheme.primary : AppTheme.onSurfaceVariant(context),
           fontWeight: selected ? FontWeight.w600 : FontWeight.normal,
         ),
         side: BorderSide(
-            color: selected ? AppTheme.primary : AppTheme.border),
+            color: selected ? AppTheme.primary : AppTheme.borderOf(context)),
       ),
     );
   }
@@ -366,8 +364,8 @@ class _EmptyState extends StatelessWidget {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            const Icon(Icons.receipt_long_outlined,
-                size: 64, color: AppTheme.border),
+            Icon(Icons.receipt_long_outlined,
+                size: 64, color: AppTheme.borderOf(context)),
             const SizedBox(height: 16),
             Text(
               isFiltered ? 'Geen overeenkomende facturen' : 'Nog geen facturen',

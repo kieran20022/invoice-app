@@ -12,6 +12,11 @@ import 'invoice_preview_screen.dart';
 
 enum Caps { none, first, words, all }
 
+String _toTitleCase(String s) => s
+    .split(' ')
+    .map((w) => w.isEmpty ? '' : '${w[0].toUpperCase()}${w.substring(1)}')
+    .join(' ');
+
 class CreateInvoiceScreen extends StatefulWidget {
   final Invoice? editInvoice;
   final int initialStep;
@@ -161,7 +166,9 @@ class _CreateInvoiceScreenState extends State<CreateInvoiceScreen> {
         Navigator.of(context).pop(saved);
       } else {
         Navigator.of(context).pushReplacement(
-          MaterialPageRoute(builder: (_) => InvoicePreviewScreen(invoice: saved)),
+          MaterialPageRoute(
+            builder: (_) => InvoicePreviewScreen(invoice: saved),
+          ),
         );
       }
     } catch (e) {
@@ -191,6 +198,7 @@ class _CreateInvoiceScreenState extends State<CreateInvoiceScreen> {
     }
     showModalBottomSheet(
       context: context,
+      isScrollControlled: true,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
@@ -220,7 +228,9 @@ class _CreateInvoiceScreenState extends State<CreateInvoiceScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Text(widget.editInvoice != null ? 'Factuur bewerken' : 'Nieuwe factuur'),
+        title: Text(
+          widget.editInvoice != null ? 'Factuur bewerken' : 'Nieuwe factuur',
+        ),
         leading: IconButton(
           icon: const Icon(Icons.close),
           onPressed: () {
@@ -290,36 +300,50 @@ class _CreateInvoiceScreenState extends State<CreateInvoiceScreen> {
     final isLast = _step == 2;
     final isItems = _step == 1;
 
-    return Material(
-      color: Colors.white,
-      elevation: 0,
+    return Container(
+      decoration: BoxDecoration(
+        color: AppTheme.surf(context),
+        border: Border(top: BorderSide(color: AppTheme.borderOf(context))),
+      ),
       child: SafeArea(
         top: false,
         child: Padding(
           padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
           child: isItems
               ? Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                   children: [
-                    _navIconBtn(
-                      icon: Icons.arrow_back,
-                      onPressed: _saving ? null : () => setState(() => _step--),
-                      filled: false,
+                    Expanded(
+                      child: _navIconBtn(
+                        icon: Icons.arrow_back,
+                        onPressed: _saving
+                            ? null
+                            : () => setState(() => _step--),
+                        filled: false,
+                      ),
                     ),
-                    _navIconBtn(
-                      icon: Icons.inventory_2_outlined,
-                      onPressed: _saving ? null : _showProductPicker,
-                      filled: false,
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: _navIconBtn(
+                        icon: Icons.inventory_2_outlined,
+                        onPressed: _saving ? null : _showProductPicker,
+                        filled: false,
+                      ),
                     ),
-                    _navIconBtn(
-                      icon: Icons.add,
-                      onPressed: _saving ? null : () => _showItemForm(),
-                      filled: false,
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: _navIconBtn(
+                        icon: Icons.add,
+                        onPressed: _saving ? null : () => _showItemForm(),
+                        filled: false,
+                      ),
                     ),
-                    _navIconBtn(
-                      icon: Icons.arrow_forward,
-                      onPressed: _saving ? null : _next,
-                      filled: true,
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: _navIconBtn(
+                        icon: Icons.arrow_forward,
+                        onPressed: _saving ? null : _next,
+                        filled: true,
+                      ),
                     ),
                   ],
                 )
@@ -375,7 +399,7 @@ class _CreateInvoiceScreenState extends State<CreateInvoiceScreen> {
     required VoidCallback? onPressed,
     required bool filled,
   }) {
-    const size = Size(56, 48);
+    const size = Size(double.infinity, 48);
     return filled
         ? ElevatedButton(
             onPressed: onPressed,
@@ -412,7 +436,7 @@ class _StepHeader extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      color: Colors.white,
+      color: AppTheme.surf(context),
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
       child: Row(
         children: List.generate(labels.length * 2 - 1, (index) {
@@ -423,7 +447,7 @@ class _StepHeader extends StatelessWidget {
               child: Container(
                 height: 1.5,
                 margin: const EdgeInsets.symmetric(horizontal: 6),
-                color: i < current ? AppTheme.primary : AppTheme.border,
+                color: i < current ? AppTheme.primary : AppTheme.borderOf(context),
               ),
             );
           }
@@ -449,7 +473,7 @@ class _StepHeader extends StatelessWidget {
                     border: Border.all(
                       color: done || active
                           ? AppTheme.primary
-                          : AppTheme.textSecondary,
+                          : AppTheme.onSurfaceVariant(context),
                       width: 1.5,
                     ),
                   ),
@@ -463,7 +487,7 @@ class _StepHeader extends StatelessWidget {
                               fontWeight: FontWeight.w700,
                               color: active
                                   ? Colors.white
-                                  : AppTheme.textSecondary,
+                                  : AppTheme.onSurfaceVariant(context),
                             ),
                           ),
                   ),
@@ -478,8 +502,8 @@ class _StepHeader extends StatelessWidget {
                     color: active
                         ? AppTheme.primary
                         : done
-                        ? AppTheme.textPrimary
-                        : AppTheme.textSecondary,
+                        ? AppTheme.onSurface(context)
+                        : AppTheme.onSurfaceVariant(context),
                   ),
                 ),
               ],
@@ -699,9 +723,9 @@ class _ItemsStep extends StatelessWidget {
           Container(
             padding: const EdgeInsets.all(24),
             decoration: BoxDecoration(
-              color: AppTheme.background,
+              color: AppTheme.bg(context),
               borderRadius: BorderRadius.circular(10),
-              border: Border.all(color: AppTheme.border),
+              border: Border.all(color: AppTheme.borderOf(context)),
             ),
             child: const Center(
               child: Text(
@@ -731,17 +755,17 @@ class _ItemsStep extends StatelessWidget {
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
             decoration: BoxDecoration(
-              color: AppTheme.primary.withAlpha(13),
+              color: AppTheme.primary.withAlpha(AppTheme.isDark(context) ? 38 : 13),
               borderRadius: BorderRadius.circular(8),
             ),
             child: Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                const Text(
+                Text(
                   'Subtotaal incl. BTW',
                   style: TextStyle(
                     fontWeight: FontWeight.w600,
-                    color: AppTheme.textPrimary,
+                    color: AppTheme.onSurface(context),
                   ),
                 ),
                 Text(
@@ -784,9 +808,9 @@ class _ItemRow extends StatelessWidget {
       margin: const EdgeInsets.only(bottom: 8),
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: AppTheme.surf(context),
         borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: AppTheme.border),
+        border: Border.all(color: AppTheme.borderOf(context)),
       ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -918,68 +942,335 @@ class _QtyBtn extends StatelessWidget {
   }
 }
 
-class _ProductPickerSheet extends StatelessWidget {
+class _ProductPickerSheet extends StatefulWidget {
   final List<Product> products;
   const _ProductPickerSheet({required this.products});
 
   @override
+  State<_ProductPickerSheet> createState() => _ProductPickerSheetState();
+}
+
+class _ProductPickerSheetState extends State<_ProductPickerSheet> {
+  final _searchCtrl = TextEditingController();
+  final _searchFocus = FocusNode();
+  String? _selectedCategory;
+
+  List<String> get _categories {
+    final cats =
+        widget.products
+            .map((p) => p.category)
+            .where((c) => c.isNotEmpty)
+            .toSet()
+            .toList()
+          ..sort();
+    return cats;
+  }
+
+  /// Returns the raw category filter string from `#text` (lowercased, no `#`),
+  /// or null if the search doesn't start with `#`.
+  String? get _hashFilter {
+    final raw = _searchCtrl.text.trim();
+    if (!raw.startsWith('#')) return null;
+    final part = raw.substring(1).split(' ').first.toLowerCase();
+    return part.isEmpty ? null : part;
+  }
+
+  List<Product> get _filtered {
+    final raw = _searchCtrl.text.trim();
+
+    if (raw.startsWith('#')) {
+      final spaceIdx = raw.indexOf(' ');
+      final categoryPart = raw.substring(1, spaceIdx == -1 ? raw.length : spaceIdx).toLowerCase();
+      final searchPart = spaceIdx == -1 ? '' : raw.substring(spaceIdx + 1).toLowerCase().trim();
+
+      var list = categoryPart.isEmpty
+          ? widget.products
+          : widget.products.where((p) => p.category.contains(categoryPart)).toList();
+
+      if (searchPart.isNotEmpty) {
+        list = list
+            .where((p) =>
+                p.name.toLowerCase().contains(searchPart) ||
+                p.description.toLowerCase().contains(searchPart))
+            .toList();
+      }
+      return list;
+    }
+
+    var list = widget.products;
+    if (_selectedCategory != null) {
+      list = list.where((p) => p.category == _selectedCategory).toList();
+    }
+    final q = raw.toLowerCase();
+    if (q.isNotEmpty) {
+      list = list
+          .where((p) =>
+              p.name.toLowerCase().contains(q) ||
+              p.description.toLowerCase().contains(q))
+          .toList();
+    }
+    return list;
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    _searchCtrl.addListener(() => setState(() {}));
+  }
+
+  @override
+  void dispose() {
+    _searchCtrl.dispose();
+    _searchFocus.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
     final currency = context.read<InvoiceProvider>().draft?.currency ?? '€';
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Padding(
-          padding: const EdgeInsets.fromLTRB(20, 20, 20, 8),
-          child: Row(
-            children: [
-              const Text(
-                'Product selecteren',
-                style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
-              ),
-              const Spacer(),
-              IconButton(
-                icon: const Icon(Icons.close),
-                onPressed: () => Navigator.pop(context),
-              ),
-            ],
-          ),
-        ),
-        const Divider(),
-        Flexible(
-          child: ListView.builder(
-            shrinkWrap: true,
-            itemCount: products.length,
-            itemBuilder: (ctx, i) {
-              final p = products[i];
-              return ListTile(
-                title: Text(
-                  p.name,
-                  style: const TextStyle(fontWeight: FontWeight.w600),
+    final categories = _categories;
+    final filtered = _filtered;
+    final favorites = context.watch<BusinessProvider>().favoriteCategories;
+    final favCategories = categories
+        .where((c) => favorites.contains(c))
+        .toList();
+    final hashFilter = _hashFilter;
+
+    return DraggableScrollableSheet(
+      expand: false,
+      initialChildSize: 0.75,
+      minChildSize: 0.4,
+      maxChildSize: 0.95,
+      builder: (_, scrollCtrl) => Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Header
+          Padding(
+            padding: const EdgeInsets.fromLTRB(20, 20, 20, 8),
+            child: Row(
+              children: [
+                const Text(
+                  'Product selecteren',
+                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
                 ),
-                subtitle: p.description.isNotEmpty ? Text(p.description) : null,
-                trailing: Text(
-                  '$currency${p.price.toStringAsFixed(2)} ex. BTW',
-                  style: const TextStyle(
-                    color: AppTheme.primary,
-                    fontWeight: FontWeight.w600,
+                const Spacer(),
+                IconButton(
+                  icon: const Icon(Icons.close),
+                  onPressed: () => Navigator.pop(context),
+                ),
+              ],
+            ),
+          ),
+          // Search bar
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            child: Row(
+              children: [
+                Expanded(
+                  child: TextField(
+                    controller: _searchCtrl,
+                    focusNode: _searchFocus,
+                    textInputAction: TextInputAction.search,
+                    decoration: InputDecoration(
+                      hintText: 'Zoeken... of #categorie product',
+                      prefixIcon: const Icon(Icons.search),
+                      isDense: true,
+                      suffixIcon: _searchCtrl.text.isNotEmpty
+                          ? IconButton(
+                              icon: const Icon(Icons.clear),
+                              onPressed: () => _searchCtrl.clear(),
+                            )
+                          : null,
+                    ),
                   ),
                 ),
-                onTap: () {
-                  final item = context.read<InvoiceProvider>().createItem(
-                    omschrijving: p.name,
-                    aantal: 1,
-                    prijsExBtw: p.price,
-                    productId: p.id,
-                  );
-                  context.read<InvoiceProvider>().addDraftItem(item);
-                  Navigator.pop(context);
-                },
-              );
-            },
+                const SizedBox(width: 8),
+                OutlinedButton(
+                  onPressed: () {
+                    if (!_searchCtrl.text.startsWith('#')) {
+                      _searchCtrl.value = TextEditingValue(
+                        text: '#${_searchCtrl.text}',
+                        selection: const TextSelection.collapsed(offset: 1),
+                      );
+                    }
+                    _searchFocus.requestFocus();
+                  },
+                  style: OutlinedButton.styleFrom(
+                    minimumSize: const Size(44, 44),
+                    padding: EdgeInsets.zero,
+                    side: BorderSide(color: AppTheme.primary.withAlpha(80)),
+                  ),
+                  child: const Text(
+                    '#',
+                    style: TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.w600,
+                      color: AppTheme.primary,
+                    ),
+                  ),
+                ),
+              ],
+            ),
           ),
+          // Category chips
+          if (categories.isNotEmpty) ...[
+            const SizedBox(height: 10),
+            SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              child: Row(
+                children: [
+                  _CategoryChip(
+                    label: 'Alle',
+                    selected: hashFilter == null && _selectedCategory == null,
+                    onTap: () => setState(() => _selectedCategory = null),
+                  ),
+                  ...categories.map(
+                    (cat) => Padding(
+                      padding: const EdgeInsets.only(left: 8),
+                      child: _CategoryChip(
+                        label: _toTitleCase(cat),
+                        selected: hashFilter != null
+                            ? cat.contains(hashFilter)
+                            : _selectedCategory == cat,
+                        isFavorite: favorites.contains(cat),
+                        onTap: () => setState(() => _selectedCategory = cat),
+                        onLongPress: () => context
+                            .read<BusinessProvider>()
+                            .toggleFavoriteCategory(cat),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            if (favCategories.isNotEmpty) ...[
+              SingleChildScrollView(
+                scrollDirection: Axis.horizontal,
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                child: Row(
+                  children: favCategories
+                      .map(
+                        (cat) => Padding(
+                          padding: const EdgeInsets.only(right: 8),
+                          child: _CategoryChip(
+                            label: _toTitleCase(cat),
+                            selected: hashFilter != null
+                                ? cat.contains(hashFilter)
+                                : _selectedCategory == cat,
+                            isFavorite: true,
+                            onTap: () =>
+                                setState(() => _selectedCategory = cat),
+                            onLongPress: () => context
+                                .read<BusinessProvider>()
+                                .toggleFavoriteCategory(cat),
+                          ),
+                        ),
+                      )
+                      .toList(),
+                ),
+              ),
+            ],
+          ],
+          const Divider(height: 16),
+          // Product list
+          Expanded(
+            child: filtered.isEmpty
+                ? const Center(
+                    child: Padding(
+                      padding: EdgeInsets.all(24),
+                      child: Text(
+                        'Geen producten gevonden.',
+                        style: TextStyle(color: AppTheme.textSecondary),
+                      ),
+                    ),
+                  )
+                : ListView.builder(
+                    controller: scrollCtrl,
+                    itemCount: filtered.length,
+                    itemBuilder: (ctx, i) {
+                      final p = filtered[i];
+                      return ListTile(
+                        title: Text(
+                          p.name,
+                          style: const TextStyle(fontWeight: FontWeight.w600),
+                        ),
+                        subtitle: p.description.isNotEmpty
+                            ? Text(p.description)
+                            : null,
+                        trailing: Text(
+                          '$currency${p.price.toStringAsFixed(2)} ex. BTW',
+                          style: const TextStyle(
+                            color: AppTheme.primary,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                        onTap: () {
+                          final item = context
+                              .read<InvoiceProvider>()
+                              .createItem(
+                                omschrijving: p.name,
+                                aantal: 1,
+                                prijsExBtw: p.price,
+                                productId: p.id,
+                              );
+                          context.read<InvoiceProvider>().addDraftItem(item);
+                          Navigator.pop(context);
+                        },
+                      );
+                    },
+                  ),
+          ),
+          const SizedBox(height: 16),
+        ],
+      ),
+    );
+  }
+}
+
+class _CategoryChip extends StatelessWidget {
+  final String label;
+  final bool selected;
+  final bool isFavorite;
+  final VoidCallback onTap;
+  final VoidCallback? onLongPress;
+
+  const _CategoryChip({
+    required this.label,
+    required this.selected,
+    this.isFavorite = false,
+    required this.onTap,
+    this.onLongPress,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onLongPress: onLongPress,
+      child: ChoiceChip(
+        label: Text(label),
+        selected: selected,
+        onSelected: (_) => onTap(),
+        showCheckmark: false,
+        selectedColor: AppTheme.primary,
+        backgroundColor: isFavorite
+            ? Colors.amber.withAlpha(45)
+            : AppTheme.primary.withAlpha(15),
+        side: BorderSide(
+          color: selected
+              ? AppTheme.primary
+              : isFavorite
+                  ? Colors.amber.withAlpha(130)
+                  : AppTheme.primary.withAlpha(50),
         ),
-        const SizedBox(height: 16),
-      ],
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        labelStyle: TextStyle(
+          color: selected ? Colors.white : AppTheme.primary,
+          fontSize: 13,
+          fontWeight: FontWeight.w500,
+        ),
+        padding: const EdgeInsets.symmetric(horizontal: 4),
+      ),
     );
   }
 }

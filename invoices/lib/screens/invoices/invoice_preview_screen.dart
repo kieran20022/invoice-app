@@ -50,6 +50,10 @@ class _InvoicePreviewScreenState extends State<InvoicePreviewScreen> {
                   value: 'verzonden',
                   child: Text('Markeer als verzonden'),
                 ),
+              const PopupMenuItem(
+                value: 'download',
+                child: Text('PDF Downloaden'),
+              ),
               const PopupMenuItem(value: 'delete', child: Text('Verwijderen')),
             ],
           ),
@@ -59,7 +63,7 @@ class _InvoicePreviewScreenState extends State<InvoicePreviewScreen> {
         children: [
           // Meta bar
           Container(
-            color: Colors.white,
+            color: AppTheme.surf(context),
             padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
             child: Row(
               children: [
@@ -81,7 +85,7 @@ class _InvoicePreviewScreenState extends State<InvoicePreviewScreen> {
           // Notes bar — no "Notes:" label, just the text
           Container(
             width: double.infinity,
-            color: AppTheme.background,
+            color: AppTheme.bg(context),
             padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
             child: Text(
               _invoice.notes.isNotEmpty
@@ -89,8 +93,8 @@ class _InvoicePreviewScreenState extends State<InvoicePreviewScreen> {
                   : 'Geen opmerkingen toegevoegd',
               style: TextStyle(
                 color: _invoice.notes.isNotEmpty
-                    ? AppTheme.textPrimary
-                    : AppTheme.textSecondary,
+                    ? AppTheme.onSurface(context)
+                    : AppTheme.onSurfaceVariant(context),
                 fontSize: 13,
                 fontStyle: _invoice.notes.isEmpty
                     ? FontStyle.italic
@@ -116,26 +120,17 @@ class _InvoicePreviewScreenState extends State<InvoicePreviewScreen> {
           // Actions
           Container(
             padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
-            decoration: const BoxDecoration(
-              color: Colors.white,
-              border: Border(top: BorderSide(color: AppTheme.border)),
+            decoration: BoxDecoration(
+              color: AppTheme.surf(context),
+              border: Border(top: BorderSide(color: AppTheme.borderOf(context))),
             ),
             child: Row(
               children: [
-                OutlinedButton(
-                  onPressed: () => _editInvoice(),
-                  style: OutlinedButton.styleFrom(
-                    minimumSize: const Size(48, 48),
-                    padding: EdgeInsets.zero,
-                  ),
-                  child: const Icon(Icons.edit_outlined, size: 20),
-                ),
-                const SizedBox(width: 8),
                 Expanded(
                   child: OutlinedButton.icon(
-                    onPressed: () => _downloadPdf(logoBytes),
-                    icon: const Icon(Icons.download_outlined, size: 18),
-                    label: const Text('PDF'),
+                    onPressed: () => _editInvoice(),
+                    icon: const Icon(Icons.edit_outlined, size: 18),
+                    label: const Text('Bewerken'),
                   ),
                 ),
                 const SizedBox(width: 8),
@@ -167,10 +162,8 @@ class _InvoicePreviewScreenState extends State<InvoicePreviewScreen> {
     final updated = await Navigator.push<Invoice>(
       context,
       MaterialPageRoute(
-        builder: (_) => CreateInvoiceScreen(
-          editInvoice: _invoice,
-          initialStep: 1,
-        ),
+        builder: (_) =>
+            CreateInvoiceScreen(editInvoice: _invoice, initialStep: 1),
       ),
     );
     if (updated != null && mounted) {
@@ -227,6 +220,11 @@ class _InvoicePreviewScreenState extends State<InvoicePreviewScreen> {
   }
 
   Future<void> _handleMenu(String action) async {
+    if (action == 'download') {
+      final logoBytes = context.read<BusinessProvider>().logoBytes;
+      await _downloadPdf(logoBytes);
+      return;
+    }
     if (action == 'delete') {
       final confirm = await showDialog<bool>(
         context: context,
@@ -277,13 +275,13 @@ class _MetaChip extends StatelessWidget {
   Widget build(BuildContext context) => Row(
     mainAxisSize: MainAxisSize.min,
     children: [
-      Icon(icon, size: 14, color: AppTheme.textSecondary),
+      Icon(icon, size: 14, color: AppTheme.onSurfaceVariant(context)),
       const SizedBox(width: 4),
       Text(
         label,
-        style: const TextStyle(
+        style: TextStyle(
           fontSize: 13,
-          color: AppTheme.textSecondary,
+          color: AppTheme.onSurfaceVariant(context),
           fontWeight: FontWeight.w500,
         ),
       ),

@@ -40,7 +40,11 @@ class _HomeScreenState extends State<HomeScreen> {
                 color: AppTheme.primary,
                 borderRadius: BorderRadius.circular(8),
               ),
-              child: const Icon(Icons.receipt_long, color: Colors.white, size: 18),
+              child: const Icon(
+                Icons.receipt_long,
+                color: Colors.white,
+                size: 18,
+              ),
             ),
             const SizedBox(width: 10),
             Text(
@@ -77,13 +81,18 @@ class _HomeScreenState extends State<HomeScreen> {
               onPressed: _openCreateInvoice,
               backgroundColor: AppTheme.primary,
               icon: const Icon(Icons.add, color: Colors.white),
-              label: const Text('Nieuwe factuur',
-                  style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600)),
+              label: const Text(
+                'Nieuwe Factuur',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
             )
           : null,
       bottomNavigationBar: Container(
-        decoration: const BoxDecoration(
-          border: Border(top: BorderSide(color: AppTheme.border)),
+        decoration: BoxDecoration(
+          border: Border(top: BorderSide(color: AppTheme.borderOf(context))),
         ),
         child: BottomNavigationBar(
           currentIndex: _currentIndex,
@@ -108,9 +117,9 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   void _openCreateInvoice() {
-    Navigator.of(context).push(
-      MaterialPageRoute(builder: (_) => const CreateInvoiceScreen()),
-    );
+    Navigator.of(
+      context,
+    ).push(MaterialPageRoute(builder: (_) => const CreateInvoiceScreen()));
   }
 
   void _showProfileMenu() {
@@ -132,17 +141,25 @@ class _HomeScreenState extends State<HomeScreen> {
                   backgroundImage: NetworkImage(auth.user!.photoURL!),
                 ),
               const SizedBox(height: 12),
-              Text(auth.user?.displayName ?? 'Gebruiker',
-                  style: const TextStyle(
-                      fontSize: 18, fontWeight: FontWeight.w600)),
-              Text(auth.user?.email ?? '',
-                  style: const TextStyle(color: AppTheme.textSecondary)),
+              Text(
+                auth.user?.displayName ?? 'Gebruiker',
+                style: const TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              Text(
+                auth.user?.email ?? '',
+                style: const TextStyle(color: AppTheme.textSecondary),
+              ),
               const SizedBox(height: 20),
               const Divider(),
               ListTile(
                 leading: const Icon(Icons.logout, color: AppTheme.error),
-                title: const Text('Uitloggen',
-                    style: TextStyle(color: AppTheme.error)),
+                title: const Text(
+                  'Uitloggen',
+                  style: TextStyle(color: AppTheme.error),
+                ),
                 onTap: () {
                   Navigator.pop(ctx);
                   auth.signOut();

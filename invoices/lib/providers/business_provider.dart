@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import '../models/business_info.dart';
 import '../services/firestore_service.dart';
@@ -17,6 +18,14 @@ class BusinessProvider extends ChangeNotifier {
   BusinessInfo? get businessInfo => _businessInfo;
   bool get isLoaded => _isLoaded;
   bool get isSaving => _isSaving;
+  List<String> get favoriteCategories =>
+      _businessInfo?.favoriteCategories ?? [];
+
+  ThemeMode get themeMode => switch (_businessInfo?.themeMode) {
+        'light' => ThemeMode.light,
+        'dark' => ThemeMode.dark,
+        _ => ThemeMode.system,
+      };
 
   void setUserId(String? userId) {
     if (_userId == userId) return;
@@ -69,6 +78,17 @@ class BusinessProvider extends ChangeNotifier {
       _isSaving = false;
       notifyListeners();
     }
+  }
+
+  Future<void> toggleFavoriteCategory(String category) async {
+    if (_userId == null) return;
+    final current = List<String>.from(favoriteCategories);
+    if (current.contains(category)) {
+      current.remove(category);
+    } else {
+      current.add(category);
+    }
+    await _firestore.saveFavoriteCategories(_userId!, current);
   }
 
   Future<void> removeLogo() async {

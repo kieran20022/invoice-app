@@ -49,11 +49,15 @@ class InvoiceApp extends StatelessWidget {
           },
         ),
       ],
-      child: MaterialApp(
-        title: 'InvoiceApp',
-        theme: AppTheme.lightTheme,
-        debugShowCheckedModeBanner: false,
-        home: const _AuthWrapper(),
+      child: Consumer<BusinessProvider>(
+        builder: (_, business, _) => MaterialApp(
+          title: 'InvoiceApp',
+          theme: AppTheme.lightTheme,
+          darkTheme: AppTheme.darkTheme,
+          themeMode: business.themeMode,
+          debugShowCheckedModeBanner: false,
+          home: const _AuthWrapper(),
+        ),
       ),
     );
   }

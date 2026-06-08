@@ -17,6 +17,8 @@ class BusinessInfo {
   final String invoicePrefix;
   final String? defaultNotes;
   final String emailTemplate;
+  final List<String> favoriteCategories;
+  final String themeMode;
 
   const BusinessInfo({
     required this.id,
@@ -37,6 +39,8 @@ class BusinessInfo {
     this.invoicePrefix = 'F',
     this.defaultNotes,
     this.emailTemplate = kDefaultEmailTemplate,
+    this.favoriteCategories = const [],
+    this.themeMode = 'system',
   });
 
   static const kDefaultEmailTemplate =
@@ -72,6 +76,8 @@ class BusinessInfo {
         'invoicePrefix': invoicePrefix,
         'defaultNotes': defaultNotes,
         'emailTemplate': emailTemplate,
+        'favoriteCategories': favoriteCategories,
+        'themeMode': themeMode,
       };
 
   factory BusinessInfo.fromMap(String id, Map<String, dynamic> map) => BusinessInfo(
@@ -93,6 +99,8 @@ class BusinessInfo {
         invoicePrefix: map['invoicePrefix'] ?? 'F',
         defaultNotes: map['defaultNotes'],
         emailTemplate: map['emailTemplate'] ?? kDefaultEmailTemplate,
+        favoriteCategories: List<String>.from(map['favoriteCategories'] ?? []),
+        themeMode: map['themeMode'] ?? 'system',
       );
 
   BusinessInfo copyWith({
@@ -114,6 +122,8 @@ class BusinessInfo {
     String? invoicePrefix,
     String? defaultNotes,
     String? emailTemplate,
+    List<String>? favoriteCategories,
+    String? themeMode,
   }) =>
       BusinessInfo(
         id: id,
@@ -134,5 +144,7 @@ class BusinessInfo {
         invoicePrefix: invoicePrefix ?? this.invoicePrefix,
         defaultNotes: defaultNotes ?? this.defaultNotes,
         emailTemplate: emailTemplate ?? this.emailTemplate,
+        favoriteCategories: favoriteCategories ?? this.favoriteCategories,
+        themeMode: themeMode ?? this.themeMode,
       );
 }
