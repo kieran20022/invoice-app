@@ -31,6 +31,7 @@ class _ProductsScreenState extends State<ProductsScreen> {
     _searchCtrl.addListener(() {
       setState(() => _query = _searchCtrl.text.trim().toLowerCase());
     });
+    _searchFocusNode.addListener(() => setState(() {}));
   }
 
   @override
@@ -39,6 +40,12 @@ class _ProductsScreenState extends State<ProductsScreen> {
     _searchFocusNode.dispose();
     super.dispose();
   }
+
+  Widget _withDismiss(Widget child) => Listener(
+        behavior: HitTestBehavior.translucent,
+        onPointerDown: (_) => _searchFocusNode.unfocus(),
+        child: child,
+      );
 
   void _syncOrder(List<Product> products) {
     final savedOrder = context.read<BusinessProvider>().categoryOrder;
@@ -145,14 +152,24 @@ class _ProductsScreenState extends State<ProductsScreen> {
   }
 
   Widget _buildFabs({required VoidCallback onAdd}) {
+    final focused = _searchFocusNode.hasFocus;
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
         FloatingActionButton(
           heroTag: 'search_fab',
-          onPressed: () => _searchFocusNode.requestFocus(),
-          backgroundColor: AppTheme.primary,
-          child: const Icon(Icons.search, color: Colors.white),
+          onPressed: () {
+            if (_searchFocusNode.hasFocus) {
+              _searchFocusNode.unfocus();
+            } else {
+              _searchFocusNode.requestFocus();
+            }
+          },
+          backgroundColor: focused ? AppTheme.primaryDark : AppTheme.primary,
+          child: Icon(
+            focused ? Icons.search_off : Icons.search,
+            color: Colors.white,
+          ),
         ),
         const SizedBox(width: 12),
         FloatingActionButton.extended(
@@ -211,46 +228,48 @@ class _ProductsScreenState extends State<ProductsScreen> {
           children: [
             _searchField(),
             Expanded(
-              child: groups.isEmpty
-                  ? Center(
-                      child: Padding(
-                        padding: const EdgeInsets.all(32),
-                        child: Text(
-                          'Geen resultaten voor "$_query".',
-                          style: const TextStyle(
-                            color: AppTheme.textSecondary,
+              child: _withDismiss(
+                groups.isEmpty
+                    ? Center(
+                        child: Padding(
+                          padding: const EdgeInsets.all(32),
+                          child: Text(
+                            'Geen resultaten voor "$_query".',
+                            style: const TextStyle(
+                              color: AppTheme.textSecondary,
+                            ),
+                            textAlign: TextAlign.center,
                           ),
-                          textAlign: TextAlign.center,
                         ),
-                      ),
-                    )
-                  : ListView.builder(
-                      padding: const EdgeInsets.only(bottom: 80),
-                      itemCount: groups.fold<int>(
-                        0,
-                        (n, g) => n + 1 + g.products.length,
-                      ),
-                      itemBuilder: (ctx, index) {
-                        int cursor = 0;
-                        for (final group in groups) {
-                          if (index == cursor) {
-                            return _SearchGroupHeader(label: group.label);
+                      )
+                    : ListView.builder(
+                        padding: const EdgeInsets.only(bottom: 80),
+                        itemCount: groups.fold<int>(
+                          0,
+                          (n, g) => n + 1 + g.products.length,
+                        ),
+                        itemBuilder: (ctx, index) {
+                          int cursor = 0;
+                          for (final group in groups) {
+                            if (index == cursor) {
+                              return _SearchGroupHeader(label: group.label);
+                            }
+                            cursor++;
+                            if (index < cursor + group.products.length) {
+                              final p = group.products[index - cursor];
+                              return _ProductRow(
+                                product: p,
+                                taxRate: taxRate,
+                                onEdit: () => _showForm(context, p),
+                                onDelete: () => _confirmDelete(context, p),
+                              );
+                            }
+                            cursor += group.products.length;
                           }
-                          cursor++;
-                          if (index < cursor + group.products.length) {
-                            final p = group.products[index - cursor];
-                            return _ProductRow(
-                              product: p,
-                              taxRate: taxRate,
-                              onEdit: () => _showForm(context, p),
-                              onDelete: () => _confirmDelete(context, p),
-                            );
-                          }
-                          cursor += group.products.length;
-                        }
-                        return const SizedBox.shrink();
-                      },
-                    ),
+                          return const SizedBox.shrink();
+                        },
+                      ),
+              ),
             ),
           ],
         ),
@@ -267,18 +286,20 @@ class _ProductsScreenState extends State<ProductsScreen> {
           children: [
             _searchField(),
             Expanded(
-              child: ListView.builder(
-                padding: const EdgeInsets.only(bottom: 80),
-                itemCount: uncategorized.length,
-                itemBuilder: (ctx, i) {
-                  final p = uncategorized[i];
-                  return _ProductRow(
-                    product: p,
-                    taxRate: taxRate,
-                    onEdit: () => _showForm(context, p),
-                    onDelete: () => _confirmDelete(context, p),
-                  );
-                },
+              child: _withDismiss(
+                ListView.builder(
+                  padding: const EdgeInsets.only(bottom: 80),
+                  itemCount: uncategorized.length,
+                  itemBuilder: (ctx, i) {
+                    final p = uncategorized[i];
+                    return _ProductRow(
+                      product: p,
+                      taxRate: taxRate,
+                      onEdit: () => _showForm(context, p),
+                      onDelete: () => _confirmDelete(context, p),
+                    );
+                  },
+                ),
               ),
             ),
           ],
@@ -298,69 +319,69 @@ class _ProductsScreenState extends State<ProductsScreen> {
             onSort: () => _openReorder(allProducts),
           ),
           Expanded(
-            child: CustomScrollView(
-              slivers: [
-                for (final cat in _orderedCategories) ...[
-                  SliverPersistentHeader(
-                    pinned: true,
-                    delegate: _CategoryHeaderDelegate(
-                      label: _toTitleCase(cat),
-                      count: _productsFor(allProducts, cat).length,
-                      isExpanded: _expandedCategory == cat,
-                      onTap: () => setState(() {
-                        _expandedCategory =
-                            _expandedCategory == cat ? null : cat;
-                      }),
-                    ),
-                  ),
-                  if (_expandedCategory == cat)
-                    SliverList(
-                      delegate: SliverChildBuilderDelegate(
-                        (ctx, i) {
-                          final p = _productsFor(allProducts, cat)[i];
-                          return _ProductRow(
-                            product: p,
-                            taxRate: taxRate,
-                            onEdit: () => _showForm(context, p),
-                            onDelete: () => _confirmDelete(context, p),
-                          );
-                        },
-                        childCount: _productsFor(allProducts, cat).length,
+            child: _withDismiss(CustomScrollView(
+                slivers: [
+                  for (final cat in _orderedCategories) ...[
+                    SliverPersistentHeader(
+                      pinned: true,
+                      delegate: _CategoryHeaderDelegate(
+                        label: _toTitleCase(cat),
+                        count: _productsFor(allProducts, cat).length,
+                        isExpanded: _expandedCategory == cat,
+                        onTap: () => setState(() {
+                          _expandedCategory =
+                              _expandedCategory == cat ? null : cat;
+                        }),
                       ),
                     ),
-                ],
-                if (uncategorized.isNotEmpty) ...[
-                  SliverPersistentHeader(
-                    pinned: true,
-                    delegate: _CategoryHeaderDelegate(
-                      label: 'Overig',
-                      count: uncategorized.length,
-                      isExpanded: _expandedCategory == '',
-                      onTap: () => setState(() {
-                        _expandedCategory =
-                            _expandedCategory == '' ? null : '';
-                      }),
-                    ),
-                  ),
-                  if (_expandedCategory == '')
-                    SliverList(
-                      delegate: SliverChildBuilderDelegate(
-                        (ctx, i) {
-                          final p = uncategorized[i];
-                          return _ProductRow(
-                            product: p,
-                            taxRate: taxRate,
-                            onEdit: () => _showForm(context, p),
-                            onDelete: () => _confirmDelete(context, p),
-                          );
-                        },
-                        childCount: uncategorized.length,
+                    if (_expandedCategory == cat)
+                      SliverList(
+                        delegate: SliverChildBuilderDelegate(
+                          (ctx, i) {
+                            final p = _productsFor(allProducts, cat)[i];
+                            return _ProductRow(
+                              product: p,
+                              taxRate: taxRate,
+                              onEdit: () => _showForm(context, p),
+                              onDelete: () => _confirmDelete(context, p),
+                            );
+                          },
+                          childCount: _productsFor(allProducts, cat).length,
+                        ),
+                      ),
+                  ],
+                  if (uncategorized.isNotEmpty) ...[
+                    SliverPersistentHeader(
+                      pinned: true,
+                      delegate: _CategoryHeaderDelegate(
+                        label: 'Overig',
+                        count: uncategorized.length,
+                        isExpanded: _expandedCategory == '',
+                        onTap: () => setState(() {
+                          _expandedCategory =
+                              _expandedCategory == '' ? null : '';
+                        }),
                       ),
                     ),
+                    if (_expandedCategory == '')
+                      SliverList(
+                        delegate: SliverChildBuilderDelegate(
+                          (ctx, i) {
+                            final p = uncategorized[i];
+                            return _ProductRow(
+                              product: p,
+                              taxRate: taxRate,
+                              onEdit: () => _showForm(context, p),
+                              onDelete: () => _confirmDelete(context, p),
+                            );
+                          },
+                          childCount: uncategorized.length,
+                        ),
+                      ),
+                  ],
+                  const SliverToBoxAdapter(child: SizedBox(height: 80)),
                 ],
-                const SliverToBoxAdapter(child: SizedBox(height: 80)),
-              ],
-            ),
+              )),
           ),
         ],
       ),
