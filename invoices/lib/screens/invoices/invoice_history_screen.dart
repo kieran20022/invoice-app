@@ -19,6 +19,82 @@ class _InvoiceHistoryScreenState extends State<InvoiceHistoryScreen> {
   String _search = '';
   DateTime _statsMonth = DateTime(DateTime.now().year, DateTime.now().month);
 
+  Future<void> _pickMonth(BuildContext context) async {
+    int year = _statsMonth.year;
+    await showDialog(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDialogState) => AlertDialog(
+          title: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              IconButton(
+                icon: const Icon(Icons.chevron_left),
+                onPressed: () => setDialogState(() => year--),
+                visualDensity: VisualDensity.compact,
+              ),
+              Text(
+                '$year',
+                style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 16),
+              ),
+              IconButton(
+                icon: const Icon(Icons.chevron_right),
+                onPressed: () => setDialogState(() => year++),
+                visualDensity: VisualDensity.compact,
+              ),
+            ],
+          ),
+          contentPadding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+          content: SizedBox(
+            width: 280,
+            child: GridView.count(
+              crossAxisCount: 3,
+              shrinkWrap: true,
+              mainAxisSpacing: 8,
+              crossAxisSpacing: 8,
+              childAspectRatio: 2.2,
+              children: List.generate(12, (i) {
+                final month = DateTime(year, i + 1);
+                final isSelected = month.year == _statsMonth.year &&
+                    month.month == _statsMonth.month;
+                return GestureDetector(
+                  onTap: () {
+                    setState(() => _statsMonth = month);
+                    Navigator.pop(ctx);
+                  },
+                  child: Container(
+                    decoration: BoxDecoration(
+                      color: isSelected ? AppTheme.primary : Colors.transparent,
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(
+                        color: isSelected
+                            ? AppTheme.primary
+                            : AppTheme.borderOf(ctx),
+                      ),
+                    ),
+                    alignment: Alignment.center,
+                    child: Text(
+                      DateFormat('MMM').format(month),
+                      style: TextStyle(
+                        color: isSelected
+                            ? Colors.white
+                            : AppTheme.onSurface(ctx),
+                        fontWeight: isSelected
+                            ? FontWeight.w700
+                            : FontWeight.normal,
+                        fontSize: 13,
+                      ),
+                    ),
+                  ),
+                );
+              }),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final provider = context.watch<InvoiceProvider>();
@@ -104,62 +180,69 @@ class _InvoiceHistoryScreenState extends State<InvoiceHistoryScreen> {
           Container(
             color: AppTheme.surf(context),
             padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.center,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                Expanded(
-                  child: _StatsRow(
-                    invoices: provider.invoices
-                        .where((inv) =>
-                            inv.issueDate.year == _statsMonth.year &&
-                            inv.issueDate.month == _statsMonth.month)
-                        .toList(),
-                    onTap: () {
-                      final monthInvoices = provider.invoices
-                          .where((inv) =>
-                              inv.issueDate.year == _statsMonth.year &&
-                              inv.issueDate.month == _statsMonth.month)
-                          .toList();
-                      Navigator.of(context).push(MaterialPageRoute(
-                        builder: (_) => InvoiceStatsScreen(
-                          invoices: monthInvoices,
-                          month: _statsMonth,
-                        ),
-                      ));
-                    },
-                  ),
-                ),
                 Row(
-                  mainAxisSize: MainAxisSize.min,
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    GestureDetector(
-                      onTap: () => setState(() => _statsMonth = DateTime(
-                        _statsMonth.year,
-                        _statsMonth.month - 1,
-                      )),
-                      child: const Padding(
-                        padding: EdgeInsets.symmetric(horizontal: 4),
-                        child: Icon(Icons.chevron_left, size: 18),
-                      ),
-                    ),
                     Text(
-                      DateFormat('MMM yyyy').format(_statsMonth),
-                      style: const TextStyle(
-                        fontWeight: FontWeight.w600,
-                        fontSize: 13,
+                      'Maandoverzicht',
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w500,
+                        color: AppTheme.onSurfaceVariant(context),
                       ),
                     ),
                     GestureDetector(
-                      onTap: () => setState(() => _statsMonth = DateTime(
-                        _statsMonth.year,
-                        _statsMonth.month + 1,
-                      )),
-                      child: const Padding(
-                        padding: EdgeInsets.symmetric(horizontal: 4),
-                        child: Icon(Icons.chevron_right, size: 18),
+                      onTap: () => _pickMonth(context),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 10,
+                          vertical: 4,
+                        ),
+                        decoration: BoxDecoration(
+                          border: Border.all(color: AppTheme.borderOf(context)),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Text(
+                              DateFormat('MMM yyyy').format(_statsMonth),
+                              style: const TextStyle(
+                                fontWeight: FontWeight.w600,
+                                fontSize: 13,
+                              ),
+                            ),
+                            const SizedBox(width: 2),
+                            const Icon(Icons.arrow_drop_down, size: 16),
+                          ],
+                        ),
                       ),
                     ),
                   ],
+                ),
+                const SizedBox(height: 8),
+                _StatsRow(
+                  invoices: provider.invoices
+                      .where((inv) =>
+                          inv.issueDate.year == _statsMonth.year &&
+                          inv.issueDate.month == _statsMonth.month)
+                      .toList(),
+                  onTap: () {
+                    final monthInvoices = provider.invoices
+                        .where((inv) =>
+                            inv.issueDate.year == _statsMonth.year &&
+                            inv.issueDate.month == _statsMonth.month)
+                        .toList();
+                    Navigator.of(context).push(MaterialPageRoute(
+                      builder: (_) => InvoiceStatsScreen(
+                        invoices: monthInvoices,
+                        month: _statsMonth,
+                      ),
+                    ));
+                  },
                 ),
               ],
             ),
@@ -292,6 +375,14 @@ class _StatsRow extends StatelessWidget {
   final VoidCallback? onTap;
   const _StatsRow({required this.invoices, this.onTap});
 
+  static double _fontSize(List<String> values) {
+    final longest = values.map((v) => v.length).reduce((a, b) => a > b ? a : b);
+    if (longest <= 6) return 15;
+    if (longest <= 8) return 13;
+    if (longest <= 10) return 11;
+    return 9;
+  }
+
   @override
   Widget build(BuildContext context) {
     final total = invoices.fold(0.0, (s, i) => s + i.totaalInclBtw);
@@ -300,37 +391,35 @@ class _StatsRow extends StatelessWidget {
         .fold(0.0, (s, i) => s + i.totaalInclBtw);
     final currency = invoices.isNotEmpty ? invoices.first.currency : '€';
 
+    final totalStr = '$currency${total.toStringAsFixed(0)}';
+    final paidStr = '$currency${paid.toStringAsFixed(0)}';
+    final unpaidStr = '$currency${(total - paid).toStringAsFixed(0)}';
+    final countStr = '${invoices.length}';
+    final fs = _fontSize([totalStr, paidStr, unpaidStr, countStr]);
+
     return GestureDetector(
       onTap: onTap,
       behavior: HitTestBehavior.opaque,
       child: Row(
         children: [
-          _Stat(
-            'Totaal',
-            '$currency${total.toStringAsFixed(0)}',
-            AppTheme.onSurface(context),
-            tappable: onTap != null,
+          Expanded(
+            flex: 2,
+            child: _Stat('Totaal', totalStr, AppTheme.onSurface(context), fs),
           ),
           _div(context),
-          _Stat(
-            'Betaald',
-            '$currency${paid.toStringAsFixed(0)}',
-            const Color(0xFF10B981),
-            tappable: onTap != null,
+          Expanded(
+            flex: 2,
+            child: _Stat('Betaald', paidStr, const Color(0xFF10B981), fs),
           ),
           _div(context),
-          _Stat(
-            'Openstaand',
-            '$currency${(total - paid).toStringAsFixed(0)}',
-            AppTheme.error,
-            tappable: onTap != null,
+          Expanded(
+            flex: 3,
+            child: _Stat('Openstaand', unpaidStr, AppTheme.error, fs),
           ),
           _div(context),
-          _Stat(
-            'Aantal',
-            '${invoices.length}',
-            AppTheme.onSurfaceVariant(context),
-            tappable: onTap != null,
+          Expanded(
+            flex: 2,
+            child: _Stat('Aantal', countStr, AppTheme.onSurfaceVariant(context), fs),
           ),
         ],
       ),
@@ -341,44 +430,35 @@ class _StatsRow extends StatelessWidget {
     height: 30,
     width: 1,
     color: AppTheme.borderOf(context),
-    margin: const EdgeInsets.symmetric(horizontal: 12),
+    margin: const EdgeInsets.symmetric(horizontal: 8),
   );
 }
 
 class _Stat extends StatelessWidget {
   final String label, value;
   final Color color;
-  final bool tappable;
-  const _Stat(this.label, this.value, this.color, {this.tappable = false});
+  final double fontSize;
+  const _Stat(this.label, this.value, this.color, this.fontSize);
 
   @override
   Widget build(BuildContext context) => Column(
-    crossAxisAlignment: CrossAxisAlignment.start,
+    crossAxisAlignment: CrossAxisAlignment.center,
     children: [
       Text(
         label,
         style: const TextStyle(color: AppTheme.textSecondary, fontSize: 11),
+        overflow: TextOverflow.ellipsis,
       ),
-      Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Text(
-            value,
-            style: TextStyle(
-              color: color,
-              fontWeight: FontWeight.w700,
-              fontSize: 15,
-            ),
+      FittedBox(
+        fit: BoxFit.scaleDown,
+        child: Text(
+          value,
+          style: TextStyle(
+            color: color,
+            fontWeight: FontWeight.w700,
+            fontSize: fontSize,
           ),
-          if (tappable) ...[
-            const SizedBox(width: 2),
-            Icon(
-              Icons.show_chart_rounded,
-              size: 13,
-              color: color.withAlpha(160),
-            ),
-          ],
-        ],
+        ),
       ),
     ],
   );
