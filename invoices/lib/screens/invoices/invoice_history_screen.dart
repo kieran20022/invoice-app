@@ -17,83 +17,6 @@ class InvoiceHistoryScreen extends StatefulWidget {
 class _InvoiceHistoryScreenState extends State<InvoiceHistoryScreen> {
   String _filter = 'alle';
   String _search = '';
-  DateTime _statsMonth = DateTime(DateTime.now().year, DateTime.now().month);
-
-  Future<void> _pickMonth(BuildContext context) async {
-    int year = _statsMonth.year;
-    await showDialog(
-      context: context,
-      builder: (ctx) => StatefulBuilder(
-        builder: (ctx, setDialogState) => AlertDialog(
-          title: Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              IconButton(
-                icon: const Icon(Icons.chevron_left),
-                onPressed: () => setDialogState(() => year--),
-                visualDensity: VisualDensity.compact,
-              ),
-              Text(
-                '$year',
-                style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 16),
-              ),
-              IconButton(
-                icon: const Icon(Icons.chevron_right),
-                onPressed: () => setDialogState(() => year++),
-                visualDensity: VisualDensity.compact,
-              ),
-            ],
-          ),
-          contentPadding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-          content: SizedBox(
-            width: 280,
-            child: GridView.count(
-              crossAxisCount: 3,
-              shrinkWrap: true,
-              mainAxisSpacing: 8,
-              crossAxisSpacing: 8,
-              childAspectRatio: 2.2,
-              children: List.generate(12, (i) {
-                final month = DateTime(year, i + 1);
-                final isSelected = month.year == _statsMonth.year &&
-                    month.month == _statsMonth.month;
-                return GestureDetector(
-                  onTap: () {
-                    setState(() => _statsMonth = month);
-                    Navigator.pop(ctx);
-                  },
-                  child: Container(
-                    decoration: BoxDecoration(
-                      color: isSelected ? AppTheme.primary : Colors.transparent,
-                      borderRadius: BorderRadius.circular(8),
-                      border: Border.all(
-                        color: isSelected
-                            ? AppTheme.primary
-                            : AppTheme.borderOf(ctx),
-                      ),
-                    ),
-                    alignment: Alignment.center,
-                    child: Text(
-                      DateFormat('MMM').format(month),
-                      style: TextStyle(
-                        color: isSelected
-                            ? Colors.white
-                            : AppTheme.onSurface(ctx),
-                        fontWeight: isSelected
-                            ? FontWeight.w700
-                            : FontWeight.normal,
-                        fontSize: 13,
-                      ),
-                    ),
-                  ),
-                );
-              }),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -160,12 +83,6 @@ class _InvoiceHistoryScreenState extends State<InvoiceHistoryScreen> {
                         () => setState(() => _filter = 'concept'),
                       ),
                       _FilterChip(
-                        'verzonden',
-                        'Verzonden',
-                        _filter,
-                        () => setState(() => _filter = 'verzonden'),
-                      ),
-                      _FilterChip(
                         'betaald',
                         'Betaald',
                         _filter,
@@ -183,66 +100,28 @@ class _InvoiceHistoryScreenState extends State<InvoiceHistoryScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Text(
-                      'Maandoverzicht',
-                      style: TextStyle(
-                        fontSize: 12,
-                        fontWeight: FontWeight.w500,
-                        color: AppTheme.onSurfaceVariant(context),
-                      ),
-                    ),
-                    GestureDetector(
-                      onTap: () => _pickMonth(context),
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 10,
-                          vertical: 4,
-                        ),
-                        decoration: BoxDecoration(
-                          border: Border.all(color: AppTheme.borderOf(context)),
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Text(
-                              DateFormat('MMM yyyy').format(_statsMonth),
-                              style: const TextStyle(
-                                fontWeight: FontWeight.w600,
-                                fontSize: 13,
-                              ),
-                            ),
-                            const SizedBox(width: 2),
-                            const Icon(Icons.arrow_drop_down, size: 16),
-                          ],
-                        ),
-                      ),
-                    ),
-                  ],
+                Text(
+                  'Maandoverzicht',
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w500,
+                    color: AppTheme.onSurfaceVariant(context),
+                  ),
                 ),
                 const SizedBox(height: 8),
                 _StatsRow(
                   invoices: provider.invoices
                       .where((inv) =>
-                          inv.issueDate.year == _statsMonth.year &&
-                          inv.issueDate.month == _statsMonth.month)
+                          inv.issueDate.year == DateTime.now().year &&
+                          inv.issueDate.month == DateTime.now().month)
                       .toList(),
-                  onTap: () {
-                    final monthInvoices = provider.invoices
-                        .where((inv) =>
-                            inv.issueDate.year == _statsMonth.year &&
-                            inv.issueDate.month == _statsMonth.month)
-                        .toList();
-                    Navigator.of(context).push(MaterialPageRoute(
+                  onTap: () => Navigator.of(context).push(
+                    MaterialPageRoute(
                       builder: (_) => InvoiceStatsScreen(
-                        invoices: monthInvoices,
-                        month: _statsMonth,
+                        allInvoices: provider.invoices,
                       ),
-                    ));
-                  },
+                    ),
+                  ),
                 ),
               ],
             ),
@@ -267,8 +146,9 @@ class _InvoiceHistoryScreenState extends State<InvoiceHistoryScreen> {
                           ),
                         ),
                       );
-                      if (_filter != 'alle' && _filter != 'concept')
+                      if (_filter != 'alle' && _filter != 'concept') {
                         return card;
+                      }
                       final swipeable = _InvoiceCard(
                         invoice: invoice,
                         margin: EdgeInsets.zero,
@@ -421,6 +301,7 @@ class _StatsRow extends StatelessWidget {
             flex: 2,
             child: _Stat('Aantal', countStr, AppTheme.onSurfaceVariant(context), fs),
           ),
+          const Icon(Icons.chevron_right, size: 16, color: AppTheme.textSecondary),
         ],
       ),
     );
@@ -596,13 +477,11 @@ class _TappableStatusBadge extends StatelessWidget {
 
   static const _allStatuses = [
     ('concept', 'Concept'),
-    ('verzonden', 'Verzonden'),
     ('betaald', 'Betaald'),
   ];
 
   static Color _colorFor(String s) => switch (s) {
     'betaald' => const Color(0xFF10B981),
-    'verzonden' => AppTheme.primary,
     _ => AppTheme.textSecondary,
   };
 
@@ -638,42 +517,6 @@ class _TappableStatusBadge extends StatelessWidget {
             ),
             Icon(Icons.arrow_drop_down, size: 12, color: color),
           ],
-        ),
-      ),
-    );
-  }
-}
-
-class _StatusBadge extends StatelessWidget {
-  final String status;
-  const _StatusBadge({required this.status});
-
-  @override
-  Widget build(BuildContext context) {
-    Color color;
-    switch (status) {
-      case 'betaald':
-        color = const Color(0xFF10B981);
-        break;
-      case 'verzonden':
-        color = AppTheme.primary;
-        break;
-      default:
-        color = AppTheme.textSecondary;
-    }
-    final label = status[0].toUpperCase() + status.substring(1);
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-      decoration: BoxDecoration(
-        color: color.withAlpha(26),
-        borderRadius: BorderRadius.circular(4),
-      ),
-      child: Text(
-        label,
-        style: TextStyle(
-          color: color,
-          fontWeight: FontWeight.w600,
-          fontSize: 10,
         ),
       ),
     );

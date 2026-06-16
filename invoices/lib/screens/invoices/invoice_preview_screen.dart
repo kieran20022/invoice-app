@@ -45,11 +45,6 @@ class _InvoicePreviewScreenState extends State<InvoicePreviewScreen> {
                   value: 'betaald',
                   child: Text('Markeer als betaald'),
                 ),
-              if (_invoice.status == 'betaald')
-                const PopupMenuItem(
-                  value: 'verzonden',
-                  child: Text('Markeer als verzonden'),
-                ),
               const PopupMenuItem(
                 value: 'download',
                 child: Text('PDF Downloaden'),
@@ -254,10 +249,9 @@ class _InvoicePreviewScreenState extends State<InvoicePreviewScreen> {
       await context.read<InvoiceProvider>().updateStatus(_invoice.id, action);
       setState(() => _invoice = _invoice.copyWith(status: action));
       if (mounted) {
-        final label = action == 'betaald' ? 'betaald' : 'verzonden';
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Factuur gemarkeerd als $label'),
+            content: Text('Factuur gemarkeerd als $action'),
             behavior: SnackBarBehavior.floating,
           ),
         );
@@ -299,9 +293,6 @@ class _StatusBadge extends StatelessWidget {
     switch (status) {
       case 'betaald':
         color = const Color(0xFF10B981);
-        break;
-      case 'verzonden':
-        color = AppTheme.primary;
         break;
       default:
         color = AppTheme.textSecondary;

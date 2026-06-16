@@ -227,6 +227,7 @@ class _ProductsScreenState extends State<ProductsScreen> {
         body: Column(
           children: [
             _searchField(),
+            const Divider(height: 1),
             Expanded(
               child: _withDismiss(
                 groups.isEmpty
@@ -285,6 +286,7 @@ class _ProductsScreenState extends State<ProductsScreen> {
         body: Column(
           children: [
             _searchField(),
+            const Divider(height: 1),
             Expanded(
               child: _withDismiss(
                 ListView.builder(
@@ -318,13 +320,13 @@ class _ProductsScreenState extends State<ProductsScreen> {
             showSort: _orderedCategories.length > 1,
             onSort: () => _openReorder(allProducts),
           ),
+          const Divider(height: 1),
           Expanded(
             child: _withDismiss(CustomScrollView(
                 slivers: [
                   for (final cat in _orderedCategories) ...[
-                    SliverPersistentHeader(
-                      pinned: true,
-                      delegate: _CategoryHeaderDelegate(
+                    SliverToBoxAdapter(
+                      child: _CategoryHeader(
                         label: _toTitleCase(cat),
                         count: _productsFor(allProducts, cat).length,
                         isExpanded: _expandedCategory == cat,
@@ -351,9 +353,8 @@ class _ProductsScreenState extends State<ProductsScreen> {
                       ),
                   ],
                   if (uncategorized.isNotEmpty) ...[
-                    SliverPersistentHeader(
-                      pinned: true,
-                      delegate: _CategoryHeaderDelegate(
+                    SliverToBoxAdapter(
+                      child: _CategoryHeader(
                         label: 'Overig',
                         count: uncategorized.length,
                         isExpanded: _expandedCategory == '',
@@ -590,43 +591,27 @@ class _ProductRow extends StatelessWidget {
 
 // ── Category accordion header ─────────────────────────────────────────────────
 
-class _CategoryHeaderDelegate extends SliverPersistentHeaderDelegate {
+class _CategoryHeader extends StatelessWidget {
   final String label;
   final int count;
   final bool isExpanded;
   final VoidCallback onTap;
 
-  const _CategoryHeaderDelegate({
+  const _CategoryHeader({
     required this.label,
     required this.count,
     required this.isExpanded,
     required this.onTap,
   });
 
-  static const double _h = 52.0;
-
   @override
-  double get minExtent => _h;
-  @override
-  double get maxExtent => _h;
-
-  @override
-  Widget build(
-    BuildContext context,
-    double shrinkOffset,
-    bool overlapsContent,
-  ) {
-    final theme = Theme.of(context);
+  Widget build(BuildContext context) {
     return Material(
-      color: overlapsContent
-          ? theme.colorScheme.surface
-          : AppTheme.surf(context),
-      elevation: overlapsContent ? 1 : 0,
-      shadowColor: theme.shadowColor.withAlpha(40),
+      color: AppTheme.surf(context),
       child: InkWell(
         onTap: onTap,
         child: Container(
-          height: _h,
+          height: 52,
           padding: const EdgeInsets.symmetric(horizontal: 16),
           decoration: BoxDecoration(
             border: Border(
@@ -682,12 +667,6 @@ class _CategoryHeaderDelegate extends SliverPersistentHeaderDelegate {
       ),
     );
   }
-
-  @override
-  bool shouldRebuild(_CategoryHeaderDelegate old) =>
-      old.isExpanded != isExpanded ||
-      old.count != count ||
-      old.label != label;
 }
 
 // ── Search group header ───────────────────────────────────────────────────────
