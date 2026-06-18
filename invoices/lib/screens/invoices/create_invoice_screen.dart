@@ -1207,9 +1207,8 @@ class _ProductPickerScreenState extends State<ProductPickerScreen> {
             child: CustomScrollView(
         slivers: [
           for (final cat in _orderedCategories) ...[
-            SliverPersistentHeader(
-              pinned: true,
-              delegate: _CategoryHeaderDelegate(
+            SliverToBoxAdapter(
+              child: _CategoryHeader(
                 label: _toTitleCase(cat),
                 count: _productsFor(cat).length,
                 isExpanded: _expandedCategory == cat,
@@ -1235,9 +1234,8 @@ class _ProductPickerScreenState extends State<ProductPickerScreen> {
               ),
           ],
           if (uncategorized.isNotEmpty) ...[
-            SliverPersistentHeader(
-              pinned: true,
-              delegate: _CategoryHeaderDelegate(
+            SliverToBoxAdapter(
+              child: _CategoryHeader(
                 label: 'Overig',
                 count: uncategorized.length,
                 isExpanded: _expandedCategory == '',
@@ -1295,39 +1293,27 @@ class _SearchGroupHeader extends StatelessWidget {
   }
 }
 
-class _CategoryHeaderDelegate extends SliverPersistentHeaderDelegate {
+class _CategoryHeader extends StatelessWidget {
   final String label;
   final int count;
   final bool isExpanded;
   final VoidCallback onTap;
 
-  const _CategoryHeaderDelegate({
+  const _CategoryHeader({
     required this.label,
     required this.count,
     required this.isExpanded,
     required this.onTap,
   });
 
-  static const double _h = 52.0;
-
   @override
-  double get minExtent => _h;
-  @override
-  double get maxExtent => _h;
-
-  @override
-  Widget build(BuildContext context, double shrinkOffset, bool overlapsContent) {
-    final theme = Theme.of(context);
+  Widget build(BuildContext context) {
     return Material(
-      color: overlapsContent
-          ? theme.colorScheme.surface
-          : AppTheme.surf(context),
-      elevation: overlapsContent ? 1 : 0,
-      shadowColor: theme.shadowColor.withAlpha(40),
+      color: AppTheme.surf(context),
       child: InkWell(
         onTap: onTap,
         child: Container(
-          height: _h,
+          height: 52,
           padding: const EdgeInsets.symmetric(horizontal: 16),
           decoration: BoxDecoration(
             border: Border(
@@ -1383,12 +1369,6 @@ class _CategoryHeaderDelegate extends SliverPersistentHeaderDelegate {
       ),
     );
   }
-
-  @override
-  bool shouldRebuild(_CategoryHeaderDelegate old) =>
-      old.isExpanded != isExpanded ||
-      old.count != count ||
-      old.label != label;
 }
 
 class _ProductTile extends StatelessWidget {
