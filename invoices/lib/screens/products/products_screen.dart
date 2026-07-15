@@ -5,11 +5,9 @@ import '../../config/theme.dart';
 import '../../models/product.dart';
 import '../../providers/business_provider.dart';
 import '../../providers/product_provider.dart';
+import '../../widgets/category_selector.dart';
 
-String _toTitleCase(String s) => s
-    .split(' ')
-    .map((w) => w.isEmpty ? '' : '${w[0].toUpperCase()}${w.substring(1)}')
-    .join(' ');
+String _toTitleCase(String s) => toTitleCase(s);
 
 class ProductsScreen extends StatefulWidget {
   const ProductsScreen({super.key});
@@ -718,6 +716,7 @@ class _ProductFormState extends State<_ProductForm> {
   late final TextEditingController _unit;
   String? _selectedCategory;
   bool _updatingPrice = false;
+  double? _preciseExclFromIncl;
 
   final _nameFocus = FocusNode();
   final _descriptionFocus = FocusNode();
@@ -759,6 +758,7 @@ class _ProductFormState extends State<_ProductForm> {
 
   void _onExclChanged() {
     if (_updatingPrice) return;
+    _preciseExclFromIncl = null;
     _updatingPrice = true;
     final excl = double.tryParse(_priceExcl.text);
     if (excl != null) {
@@ -774,8 +774,11 @@ class _ProductFormState extends State<_ProductForm> {
     _updatingPrice = true;
     final incl = double.tryParse(_priceIncl.text);
     if (incl != null) {
-      _priceExcl.text = (incl / (1 + widget.taxRate / 100)).toStringAsFixed(2);
+      final excl = incl / (1 + widget.taxRate / 100);
+      _preciseExclFromIncl = double.parse(excl.toStringAsFixed(4));
+      _priceExcl.text = excl.toStringAsFixed(2);
     } else if (_priceIncl.text.isEmpty) {
+      _preciseExclFromIncl = null;
       _priceExcl.text = '';
     }
     _updatingPrice = false;
@@ -802,7 +805,7 @@ class _ProductFormState extends State<_ProductForm> {
       id: widget.product?.id ?? const Uuid().v4(),
       name: _name.text.trim(),
       description: _description.text.trim(),
-      price: double.tryParse(_priceExcl.text) ?? 0,
+      price: _preciseExclFromIncl ?? double.tryParse(_priceExcl.text) ?? 0,
       unit: _unit.text.trim().isEmpty ? 'stuk' : _unit.text.trim(),
       category: _selectedCategory ?? '',
     );
@@ -912,7 +915,7 @@ class _ProductFormState extends State<_ProductForm> {
               ],
             ),
             const SizedBox(height: 12),
-            _CategorySelectorField(
+            CategorySelectorField(
               selected: _selectedCategory,
               categories: categories,
               onChanged: (cat) => setState(() => _selectedCategory = cat),
@@ -936,220 +939,6 @@ class _ProductFormState extends State<_ProductForm> {
             ),
           ],
         ),
-      ),
-    );
-  }
-}
-
-// ── Category selector field ───────────────────────────────────────────────────
-
-class _CategorySelectorField extends StatelessWidget {
-  final String? selected;
-  final List<String> categories;
-  final ValueChanged<String?> onChanged;
-
-  const _CategorySelectorField({
-    required this.selected,
-    required this.categories,
-    required this.onChanged,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final hasValue = selected != null && selected!.isNotEmpty;
-    return InkWell(
-      onTap: () => _showPicker(context),
-      borderRadius: BorderRadius.circular(4),
-      child: InputDecorator(
-        decoration: const InputDecoration(
-          labelText: 'Categorie (optioneel)',
-          suffixIcon: Icon(Icons.arrow_drop_down),
-        ),
-        child: Text(
-          hasValue ? _toTitleCase(selected!) : 'Geen categorie',
-          style: TextStyle(
-            fontSize: 16,
-            color: hasValue ? null : AppTheme.textSecondary,
-          ),
-        ),
-      ),
-    );
-  }
-
-  void _showPicker(BuildContext context) {
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      builder: (_) => _CategoryPickerSheet(
-        categories: categories,
-        selected: selected,
-        onSelected: (cat) {
-          onChanged(cat);
-          Navigator.pop(context);
-        },
-      ),
-    );
-  }
-}
-
-// ── Category picker sheet ─────────────────────────────────────────────────────
-
-class _CategoryPickerSheet extends StatefulWidget {
-  final List<String> categories;
-  final String? selected;
-  final ValueChanged<String?> onSelected;
-
-  const _CategoryPickerSheet({
-    required this.categories,
-    required this.selected,
-    required this.onSelected,
-  });
-
-  @override
-  State<_CategoryPickerSheet> createState() => _CategoryPickerSheetState();
-}
-
-class _CategoryPickerSheetState extends State<_CategoryPickerSheet> {
-  final _searchCtrl = TextEditingController();
-  late List<String> _filtered;
-
-  @override
-  void initState() {
-    super.initState();
-    _filtered = List.from(widget.categories);
-    _searchCtrl.addListener(_filter);
-  }
-
-  void _filter() {
-    final q = _searchCtrl.text.toLowerCase().trim();
-    setState(() {
-      _filtered = q.isEmpty
-          ? List.from(widget.categories)
-          : widget.categories.where((c) => c.contains(q)).toList();
-    });
-  }
-
-  @override
-  void dispose() {
-    _searchCtrl.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final query = _searchCtrl.text.trim().toLowerCase();
-    final canAdd = query.isNotEmpty && !widget.categories.contains(query);
-    final noneSelected = widget.selected == null || widget.selected!.isEmpty;
-
-    return Padding(
-      padding: EdgeInsets.only(
-        left: 20,
-        right: 20,
-        top: 20,
-        bottom: MediaQuery.of(context).viewInsets.bottom + 20,
-      ),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              const Text(
-                'Categorie',
-                style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
-              ),
-              const Spacer(),
-              IconButton(
-                icon: const Icon(Icons.close),
-                onPressed: () => Navigator.pop(context),
-              ),
-            ],
-          ),
-          const SizedBox(height: 12),
-          TextField(
-            controller: _searchCtrl,
-            autofocus: true,
-            textCapitalization: TextCapitalization.none,
-            decoration: InputDecoration(
-              hintText: 'Zoeken of nieuwe categorie...',
-              prefixIcon: const Icon(Icons.search),
-              suffixIcon: _searchCtrl.text.isNotEmpty
-                  ? IconButton(
-                      icon: const Icon(Icons.clear),
-                      onPressed: () {
-                        _searchCtrl.clear();
-                        setState(
-                          () => _filtered = List.from(widget.categories),
-                        );
-                      },
-                    )
-                  : null,
-            ),
-          ),
-          const SizedBox(height: 4),
-          ConstrainedBox(
-            constraints: BoxConstraints(
-              maxHeight: MediaQuery.of(context).size.height * 0.35,
-            ),
-            child: ListView(
-              shrinkWrap: true,
-              children: [
-                ListTile(
-                  dense: true,
-                  leading: Icon(
-                    Icons.label_off_outlined,
-                    color: noneSelected ? AppTheme.primary : null,
-                  ),
-                  title: const Text('Geen categorie'),
-                  selected: noneSelected,
-                  selectedColor: AppTheme.primary,
-                  onTap: () => widget.onSelected(null),
-                ),
-                if (canAdd)
-                  ListTile(
-                    dense: true,
-                    leading: const Icon(
-                      Icons.add_circle_outline,
-                      color: AppTheme.primary,
-                    ),
-                    title: Text(
-                      'Toevoegen: "${_toTitleCase(query)}"',
-                      style: const TextStyle(color: AppTheme.primary),
-                    ),
-                    onTap: () => widget.onSelected(query),
-                  ),
-                ..._filtered.map(
-                  (cat) => ListTile(
-                    dense: true,
-                    leading: Icon(
-                      widget.selected == cat
-                          ? Icons.label
-                          : Icons.label_outline,
-                      color: widget.selected == cat ? AppTheme.primary : null,
-                    ),
-                    title: Text(_toTitleCase(cat)),
-                    selected: widget.selected == cat,
-                    selectedColor: AppTheme.primary,
-                    onTap: () => widget.onSelected(cat),
-                  ),
-                ),
-                if (_filtered.isEmpty && !canAdd && query.isNotEmpty)
-                  const Padding(
-                    padding: EdgeInsets.symmetric(vertical: 16),
-                    child: Center(
-                      child: Text(
-                        'Geen categorieën gevonden.',
-                        style: TextStyle(color: AppTheme.textSecondary),
-                      ),
-                    ),
-                  ),
-              ],
-            ),
-          ),
-        ],
       ),
     );
   }

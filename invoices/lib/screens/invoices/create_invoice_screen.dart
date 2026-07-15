@@ -8,6 +8,7 @@ import '../../models/product.dart';
 import '../../providers/business_provider.dart';
 import '../../providers/invoice_provider.dart';
 import '../../providers/product_provider.dart';
+import '../../widgets/category_selector.dart';
 import 'invoice_preview_screen.dart';
 
 enum Caps { none, first, words, all }
@@ -1427,6 +1428,9 @@ class _ItemFormSheetState extends State<_ItemFormSheet> {
   late final TextEditingController _prijsExcl;
   late final TextEditingController _prijsIncl;
   bool _updatingPrice = false;
+  bool _saveAsProduct = false;
+  String? _selectedCategory;
+  double? _preciseExclFromIncl;
 
   final _omschrijvingFocus = FocusNode();
   final _aantalFocus = FocusNode();
@@ -1463,6 +1467,7 @@ class _ItemFormSheetState extends State<_ItemFormSheet> {
 
   void _onExclChanged() {
     if (_updatingPrice) return;
+    _preciseExclFromIncl = null;
     _updatingPrice = true;
     final excl = double.tryParse(_prijsExcl.text);
     if (excl != null) {
@@ -1478,8 +1483,11 @@ class _ItemFormSheetState extends State<_ItemFormSheet> {
     _updatingPrice = true;
     final incl = double.tryParse(_prijsIncl.text);
     if (incl != null) {
-      _prijsExcl.text = (incl / (1 + widget.taxRate / 100)).toStringAsFixed(2);
+      final excl = incl / (1 + widget.taxRate / 100);
+      _preciseExclFromIncl = double.parse(excl.toStringAsFixed(4));
+      _prijsExcl.text = excl.toStringAsFixed(2);
     } else if (_prijsIncl.text.isEmpty) {
+      _preciseExclFromIncl = null;
       _prijsExcl.text = '';
     }
     _updatingPrice = false;
@@ -1501,12 +1509,14 @@ class _ItemFormSheetState extends State<_ItemFormSheet> {
   void _save() {
     if (!_formKey.currentState!.validate()) return;
     final provider = context.read<InvoiceProvider>();
+    final prijsExBtw =
+        _preciseExclFromIncl ?? double.tryParse(_prijsExcl.text) ?? 0;
     if (widget.item != null) {
       provider.updateDraftItem(
         widget.item!.copyWith(
           omschrijving: _omschrijving.text.trim(),
           aantal: double.tryParse(_aantal.text) ?? 1,
-          prijsExBtw: double.tryParse(_prijsExcl.text) ?? 0,
+          prijsExBtw: prijsExBtw,
         ),
       );
     } else {
@@ -1514,9 +1524,19 @@ class _ItemFormSheetState extends State<_ItemFormSheet> {
         provider.createItem(
           omschrijving: _omschrijving.text.trim(),
           aantal: double.tryParse(_aantal.text) ?? 1,
-          prijsExBtw: double.tryParse(_prijsExcl.text) ?? 0,
+          prijsExBtw: prijsExBtw,
         ),
       );
+      if (_saveAsProduct) {
+        context.read<ProductProvider>().saveProduct(
+          Product(
+            id: '',
+            name: _omschrijving.text.trim(),
+            price: prijsExBtw,
+            category: _selectedCategory ?? '',
+          ),
+        );
+      }
     }
     Navigator.pop(context);
   }
@@ -1622,7 +1642,26 @@ class _ItemFormSheetState extends State<_ItemFormSheet> {
                 ),
               ],
             ),
-            const SizedBox(height: 20),
+            if (widget.item == null) ...[
+              CheckboxListTile(
+                value: _saveAsProduct,
+                onChanged: (v) => setState(() => _saveAsProduct = v ?? false),
+                contentPadding: EdgeInsets.zero,
+                controlAffinity: ListTileControlAffinity.leading,
+                title: const Text('Ook opslaan in producten'),
+              ),
+              if (_saveAsProduct)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 12),
+                  child: CategorySelectorField(
+                    selected: _selectedCategory,
+                    categories: context.watch<ProductProvider>().categories,
+                    onChanged: (cat) =>
+                        setState(() => _selectedCategory = cat),
+                  ),
+                ),
+            ],
+            const SizedBox(height: 8),
             SizedBox(
               width: double.infinity,
               child: ElevatedButton(

@@ -19,7 +19,10 @@ class PdfService {
   }
 
   static String _fmt(Invoice inv, double amount) =>
-      '${inv.currency}${NumberFormat('#,##0.00').format(amount)}';
+      '${inv.currency}${NumberFormat('#,##0.00').format(amount)}'.replaceAll(
+        '.',
+        ',',
+      );
 
   static String _date(DateTime d) => DateFormat('dd-MM-yyyy').format(d);
 
