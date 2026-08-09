@@ -136,6 +136,17 @@ class FirestoreService {
     }
   }
 
+  /// Writes the manual position of each product in one batch.
+  /// [orderedIds] is the products of a single category, in their new order.
+  Future<void> saveProductOrder(String userId, List<String> orderedIds) async {
+    final col = _db.collection('users').doc(userId).collection('products');
+    final batch = _db.batch();
+    for (var i = 0; i < orderedIds.length; i++) {
+      batch.set(col.doc(orderedIds[i]), {'sortOrder': i}, SetOptions(merge: true));
+    }
+    await batch.commit();
+  }
+
   Future<void> deleteProduct(String userId, String productId) async {
     await _db.collection('users').doc(userId).collection('products').doc(productId).delete();
   }

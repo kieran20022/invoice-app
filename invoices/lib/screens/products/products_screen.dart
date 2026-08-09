@@ -5,7 +5,9 @@ import '../../config/theme.dart';
 import '../../models/product.dart';
 import '../../providers/business_provider.dart';
 import '../../providers/product_provider.dart';
+import '../../utils/price.dart';
 import '../../widgets/category_selector.dart';
+import '../../widgets/reorder_screen.dart';
 
 String _toTitleCase(String s) => toTitleCase(s);
 
@@ -185,14 +187,13 @@ class _ProductsScreenState extends State<ProductsScreen> {
   }
 
   void _openReorder(List<Product> allProducts) {
-    final cats = List<String>.from(_orderedCategories);
     Navigator.push(
       context,
       MaterialPageRoute(
-        builder: (_) => _ReorderScreen(
-          categories: cats,
-          productCount: (cat) => _productsFor(allProducts, cat).length,
-          onSave: (ordered) {
+        builder: (_) => CategoryReorderScreen(
+          categories: List<String>.from(_orderedCategories),
+          products: allProducts,
+          onSaveCategories: (ordered) {
             context.read<BusinessProvider>().saveCategoryOrder(ordered);
             setState(() => _orderedCategories = ordered);
           },
@@ -283,7 +284,10 @@ class _ProductsScreenState extends State<ProductsScreen> {
       return Scaffold(
         body: Column(
           children: [
-            _searchField(),
+            _searchField(
+              showSort: uncategorized.length > 1,
+              onSort: () => _openReorder(allProducts),
+            ),
             const Divider(height: 1),
             Expanded(
               child: _withDismiss(
@@ -315,7 +319,7 @@ class _ProductsScreenState extends State<ProductsScreen> {
       body: Column(
         children: [
           _searchField(
-            showSort: _orderedCategories.length > 1,
+            showSort: true,
             onSort: () => _openReorder(allProducts),
           ),
           const Divider(height: 1),
@@ -438,85 +442,6 @@ class _ProductsScreenState extends State<ProductsScreen> {
             child: const Text('Verwijderen'),
           ),
         ],
-      ),
-    );
-  }
-}
-
-// ── Reorder screen ────────────────────────────────────────────────────────────
-
-class _ReorderScreen extends StatefulWidget {
-  final List<String> categories;
-  final int Function(String cat) productCount;
-  final ValueChanged<List<String>> onSave;
-
-  const _ReorderScreen({
-    required this.categories,
-    required this.productCount,
-    required this.onSave,
-  });
-
-  @override
-  State<_ReorderScreen> createState() => _ReorderScreenState();
-}
-
-class _ReorderScreenState extends State<_ReorderScreen> {
-  late List<String> _cats;
-
-  @override
-  void initState() {
-    super.initState();
-    _cats = List.from(widget.categories);
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Volgorde aanpassen'),
-        actions: [
-          TextButton(
-            onPressed: () {
-              widget.onSave(_cats);
-              Navigator.pop(context);
-            },
-            child: const Text('Klaar'),
-          ),
-        ],
-      ),
-      body: ReorderableListView.builder(
-        padding: const EdgeInsets.symmetric(vertical: 8),
-        itemCount: _cats.length,
-        onReorder: (oldIndex, newIndex) {
-          setState(() {
-            if (newIndex > oldIndex) newIndex--;
-            final cat = _cats.removeAt(oldIndex);
-            _cats.insert(newIndex, cat);
-          });
-        },
-        itemBuilder: (ctx, i) {
-          final cat = _cats[i];
-          final count = widget.productCount(cat);
-          return ListTile(
-            key: ValueKey(cat),
-            contentPadding: const EdgeInsets.symmetric(
-              horizontal: 16,
-              vertical: 4,
-            ),
-            title: Text(
-              _toTitleCase(cat),
-              style: const TextStyle(
-                fontWeight: FontWeight.w600,
-                fontSize: 15,
-              ),
-            ),
-            subtitle: Text('$count product${count == 1 ? '' : 'en'}'),
-            trailing: const Icon(
-              Icons.drag_handle,
-              color: AppTheme.textSecondary,
-            ),
-          );
-        },
       ),
     );
   }
@@ -737,8 +662,10 @@ class _ProductFormState extends State<_ProductForm> {
     _selectedCategory = raw.isEmpty ? null : raw;
 
     final excl = widget.product?.price;
+    // Full stored precision, so re-saving an untouched price writes back the
+    // same value instead of a 2-decimal rounding of it.
     _priceExcl = TextEditingController(
-      text: excl != null ? excl.toStringAsFixed(2) : '',
+      text: excl != null ? formatPriceInput(excl) : '',
     );
     _priceIncl = TextEditingController(
       text: excl != null
@@ -774,9 +701,9 @@ class _ProductFormState extends State<_ProductForm> {
     _updatingPrice = true;
     final incl = double.tryParse(_priceIncl.text);
     if (incl != null) {
-      final excl = incl / (1 + widget.taxRate / 100);
-      _preciseExclFromIncl = double.parse(excl.toStringAsFixed(4));
-      _priceExcl.text = excl.toStringAsFixed(2);
+      final excl = roundPrice(incl / (1 + widget.taxRate / 100));
+      _preciseExclFromIncl = excl;
+      _priceExcl.text = formatPriceInput(excl);
     } else if (_priceIncl.text.isEmpty) {
       _preciseExclFromIncl = null;
       _priceExcl.text = '';
@@ -805,9 +732,12 @@ class _ProductFormState extends State<_ProductForm> {
       id: widget.product?.id ?? const Uuid().v4(),
       name: _name.text.trim(),
       description: _description.text.trim(),
-      price: _preciseExclFromIncl ?? double.tryParse(_priceExcl.text) ?? 0,
+      price: _preciseExclFromIncl ??
+          roundPrice(double.tryParse(_priceExcl.text) ?? 0),
       unit: _unit.text.trim().isEmpty ? 'stuk' : _unit.text.trim(),
       category: _selectedCategory ?? '',
+      // Keep the manual position when editing; new products go last.
+      sortOrder: widget.product?.sortOrder ?? Product.unordered,
     );
     await context.read<ProductProvider>().saveProduct(product);
     if (mounted) Navigator.pop(context);

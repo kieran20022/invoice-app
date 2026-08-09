@@ -9,6 +9,8 @@ const _kDark = PdfColor(0.122, 0.161, 0.216);
 const _kGrey = PdfColor(0.420, 0.447, 0.502);
 const _kBorder = PdfColor(0.820, 0.835, 0.859);
 const _kBgLight = PdfColor(0.949, 0.953, 0.965);
+const _kPaid = PdfColor(0.063, 0.725, 0.506); // #10B981
+const _kUnpaid = PdfColor(0.937, 0.267, 0.267); // #EF4444
 
 class PdfService {
   static Future<pw.ThemeData> _theme() async {
@@ -118,6 +120,8 @@ class PdfService {
                       ],
                     ),
                   ),
+                  pw.SizedBox(height: 8),
+                  _statusBadge(invoice),
                 ],
               ),
             ],
@@ -344,6 +348,26 @@ class PdfService {
       ],
     ),
   );
+
+  /// Payment state, shown right under the invoice number / date block.
+  static pw.Widget _statusBadge(Invoice invoice) {
+    final isPaid = invoice.status == 'betaald';
+    final color = isPaid ? _kPaid : _kUnpaid;
+    return pw.Container(
+      padding: const pw.EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+      decoration: pw.BoxDecoration(border: pw.Border.all(color: color)),
+      child: pw.Text(
+        isPaid ? 'BETAALD' : 'TE BETALEN',
+        textAlign: pw.TextAlign.center,
+        style: pw.TextStyle(
+          color: color,
+          fontSize: 12,
+          fontWeight: pw.FontWeight.bold,
+          letterSpacing: 1.5,
+        ),
+      ),
+    );
+  }
 
   static pw.Widget _clientRow(String label, String value) => value.isEmpty
       ? pw.SizedBox()

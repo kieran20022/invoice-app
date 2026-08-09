@@ -8,7 +8,9 @@ import '../../models/product.dart';
 import '../../providers/business_provider.dart';
 import '../../providers/invoice_provider.dart';
 import '../../providers/product_provider.dart';
+import '../../utils/price.dart';
 import '../../widgets/category_selector.dart';
+import '../../widgets/reorder_screen.dart';
 import 'invoice_preview_screen.dart';
 
 enum Caps { none, first, words, all }
@@ -953,15 +955,17 @@ class ProductPickerScreen extends StatefulWidget {
 
 class _ProductPickerScreenState extends State<ProductPickerScreen> {
   String? _expandedCategory; // null = none open; '' = uncategorized open
-  bool _reorderMode = false;
-  late List<String> _orderedCategories;
+  List<String> _orderedCategories = [];
+  // Live product list, refreshed from the provider on every build so a reorder
+  // is reflected immediately.
+  List<Product> _allProducts = const [];
   final _searchCtrl = TextEditingController();
   String _query = '';
 
   @override
   void initState() {
     super.initState();
-    _buildOrder();
+    _allProducts = widget.products;
     _searchCtrl.addListener(() {
       setState(() => _query = _searchCtrl.text.trim().toLowerCase());
     });
@@ -973,9 +977,9 @@ class _ProductPickerScreenState extends State<ProductPickerScreen> {
     super.dispose();
   }
 
-  void _buildOrder() {
+  void _syncOrder() {
     final savedOrder = context.read<BusinessProvider>().categoryOrder;
-    final allCats = widget.products
+    final allCats = _allProducts
         .map((p) => p.category)
         .where((c) => c.isNotEmpty)
         .toSet();
@@ -985,11 +989,27 @@ class _ProductPickerScreenState extends State<ProductPickerScreen> {
     _orderedCategories = ordered;
   }
 
+  void _openReorder() {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => CategoryReorderScreen(
+          categories: List<String>.from(_orderedCategories),
+          products: _allProducts,
+          onSaveCategories: (ordered) {
+            context.read<BusinessProvider>().saveCategoryOrder(ordered);
+            setState(() => _orderedCategories = ordered);
+          },
+        ),
+      ),
+    );
+  }
+
   List<Product> _productsFor(String cat) =>
-      widget.products.where((p) => p.category == cat).toList();
+      _allProducts.where((p) => p.category == cat).toList();
 
   List<Product> get _uncategorized =>
-      widget.products.where((p) => p.category.isEmpty).toList();
+      _allProducts.where((p) => p.category.isEmpty).toList();
 
   /// Grouped search results: each entry is a (label, products) pair.
   /// Category name match → show all products in that category.
@@ -1067,47 +1087,8 @@ class _ProductPickerScreenState extends State<ProductPickerScreen> {
 
   @override
   Widget build(BuildContext context) {
-    if (_reorderMode) {
-      return Scaffold(
-        appBar: AppBar(
-          title: const Text('Volgorde aanpassen'),
-          actions: [
-            TextButton(
-              onPressed: () {
-                context.read<BusinessProvider>().saveCategoryOrder(_orderedCategories);
-                setState(() => _reorderMode = false);
-              },
-              child: const Text('Klaar'),
-            ),
-          ],
-        ),
-        body: ReorderableListView.builder(
-          padding: const EdgeInsets.symmetric(vertical: 8),
-          itemCount: _orderedCategories.length,
-          onReorder: (oldIndex, newIndex) {
-            setState(() {
-              if (newIndex > oldIndex) newIndex--;
-              final cat = _orderedCategories.removeAt(oldIndex);
-              _orderedCategories.insert(newIndex, cat);
-            });
-          },
-          itemBuilder: (ctx, i) {
-            final cat = _orderedCategories[i];
-            final count = _productsFor(cat).length;
-            return ListTile(
-              key: ValueKey(cat),
-              contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-              title: Text(
-                _toTitleCase(cat),
-                style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 15),
-              ),
-              subtitle: Text('$count product${count == 1 ? '' : 'en'}'),
-              trailing: const Icon(Icons.drag_handle, color: AppTheme.textSecondary),
-            );
-          },
-        ),
-      );
-    }
+    _allProducts = context.watch<ProductProvider>().products;
+    _syncOrder();
 
     final draft = context.read<InvoiceProvider>().draft;
     final currency = draft?.currency ?? '€';
@@ -1167,7 +1148,17 @@ class _ProductPickerScreenState extends State<ProductPickerScreen> {
     // ── No categories at all: flat list ───────────────────────────────────
     if (!hasCategories) {
       return Scaffold(
-        appBar: AppBar(title: const Text('Product selecteren')),
+        appBar: AppBar(
+          title: const Text('Product selecteren'),
+          actions: [
+            if (uncategorized.length > 1)
+              IconButton(
+                icon: const Icon(Icons.sort),
+                tooltip: 'Volgorde aanpassen',
+                onPressed: _openReorder,
+              ),
+          ],
+        ),
         body: Column(
           children: [
             Expanded(
@@ -1198,7 +1189,7 @@ class _ProductPickerScreenState extends State<ProductPickerScreen> {
           IconButton(
             icon: const Icon(Icons.sort),
             tooltip: 'Volgorde aanpassen',
-            onPressed: () => setState(() => _reorderMode = true),
+            onPressed: _openReorder,
           ),
         ],
       ),
@@ -1448,8 +1439,10 @@ class _ItemFormSheetState extends State<_ItemFormSheet> {
     );
 
     final excl = widget.item?.prijsExBtw;
+    // Full stored precision, so re-saving an untouched price writes back the
+    // same value instead of a 2-decimal rounding of it.
     _prijsExcl = TextEditingController(
-      text: excl != null ? excl.toStringAsFixed(2) : '',
+      text: excl != null ? formatPriceInput(excl) : '',
     );
     _prijsIncl = TextEditingController(
       text: excl != null
@@ -1483,9 +1476,9 @@ class _ItemFormSheetState extends State<_ItemFormSheet> {
     _updatingPrice = true;
     final incl = double.tryParse(_prijsIncl.text);
     if (incl != null) {
-      final excl = incl / (1 + widget.taxRate / 100);
-      _preciseExclFromIncl = double.parse(excl.toStringAsFixed(4));
-      _prijsExcl.text = excl.toStringAsFixed(2);
+      final excl = roundPrice(incl / (1 + widget.taxRate / 100));
+      _preciseExclFromIncl = excl;
+      _prijsExcl.text = formatPriceInput(excl);
     } else if (_prijsIncl.text.isEmpty) {
       _preciseExclFromIncl = null;
       _prijsExcl.text = '';
@@ -1509,8 +1502,8 @@ class _ItemFormSheetState extends State<_ItemFormSheet> {
   void _save() {
     if (!_formKey.currentState!.validate()) return;
     final provider = context.read<InvoiceProvider>();
-    final prijsExBtw =
-        _preciseExclFromIncl ?? double.tryParse(_prijsExcl.text) ?? 0;
+    final prijsExBtw = _preciseExclFromIncl ??
+        roundPrice(double.tryParse(_prijsExcl.text) ?? 0);
     if (widget.item != null) {
       provider.updateDraftItem(
         widget.item!.copyWith(
