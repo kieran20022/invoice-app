@@ -19,6 +19,10 @@ class BusinessInfo {
   final String emailTemplate;
   final List<String> favoriteCategories;
   final List<String> categoryOrder;
+
+  /// Manual sub-category order, as `'<category>::<sub>'` keys across all
+  /// categories. Sub-categories missing here sort alphabetically after.
+  final List<String> subCategoryOrder;
   final String themeMode;
 
   const BusinessInfo({
@@ -42,6 +46,7 @@ class BusinessInfo {
     this.emailTemplate = kDefaultEmailTemplate,
     this.favoriteCategories = const [],
     this.categoryOrder = const [],
+    this.subCategoryOrder = const [],
     this.themeMode = 'system',
   });
 
@@ -80,6 +85,7 @@ class BusinessInfo {
         'emailTemplate': emailTemplate,
         'favoriteCategories': favoriteCategories,
         'categoryOrder': categoryOrder,
+        'subCategoryOrder': subCategoryOrder,
         'themeMode': themeMode,
       };
 
@@ -104,6 +110,7 @@ class BusinessInfo {
         emailTemplate: map['emailTemplate'] ?? kDefaultEmailTemplate,
         favoriteCategories: List<String>.from(map['favoriteCategories'] ?? []),
         categoryOrder: List<String>.from(map['categoryOrder'] ?? []),
+        subCategoryOrder: List<String>.from(map['subCategoryOrder'] ?? []),
         themeMode: map['themeMode'] ?? 'system',
       );
 
@@ -128,6 +135,7 @@ class BusinessInfo {
     String? emailTemplate,
     List<String>? favoriteCategories,
     List<String>? categoryOrder,
+    List<String>? subCategoryOrder,
     String? themeMode,
   }) =>
       BusinessInfo(
@@ -151,6 +159,7 @@ class BusinessInfo {
         emailTemplate: emailTemplate ?? this.emailTemplate,
         favoriteCategories: favoriteCategories ?? this.favoriteCategories,
         categoryOrder: categoryOrder ?? this.categoryOrder,
+        subCategoryOrder: subCategoryOrder ?? this.subCategoryOrder,
         themeMode: themeMode ?? this.themeMode,
       );
 }

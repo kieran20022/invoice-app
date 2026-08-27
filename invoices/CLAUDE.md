@@ -11,7 +11,7 @@ Invoice app. Used for generating invoices for clients. Simple interface where us
 5. Invoice details: Services/products billed, amounts, notes, terms, tax rate, issue date, due date.
 6. Invoice generation: Professional PDF invoice — 3 templates (Modern, Classic, Minimal). Download as PDF or send via email/WhatsApp.
 7. Invoice history: List of all invoices with search, filter by status (draft/sent/paid), and revenue stats.
-8. Products: Saved product/service list with name, description, price, unit. Quickly added to invoices.
+8. Products: Saved product/service list with name, description, price, unit. Organised in categories and optional sub-categories (created when adding a product, or in bulk by long-pressing products in one category and selecting them). Quickly added to invoices.
 9. Custom one-time products: Custom items added to invoices without saving to product list.
 10. Send email: Share invoice PDF with subject and message via native share sheet (email clients receive subject + body; WhatsApp receives `*Subject*\n\nMessage`). Optional server-side sending via Firebase Cloud Functions + SMTP.
 

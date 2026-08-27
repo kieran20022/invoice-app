@@ -955,7 +955,14 @@ class ProductPickerScreen extends StatefulWidget {
 
 class _ProductPickerScreenState extends State<ProductPickerScreen> {
   String? _expandedCategory; // null = none open; '' = uncategorized open
+
+  /// Open sub-category, keyed `'<category>::<sub>'`; `'<category>::'` is that
+  /// category's "Overig" bucket. null = none open.
+  String? _expandedSub;
   List<String> _orderedCategories = [];
+
+  /// Saved sub-category order, as [subCategoryKey]s.
+  List<String> _subOrder = [];
   // Live product list, refreshed from the provider on every build so a reorder
   // is reflected immediately.
   List<Product> _allProducts = const [];
@@ -978,7 +985,9 @@ class _ProductPickerScreenState extends State<ProductPickerScreen> {
   }
 
   void _syncOrder() {
-    final savedOrder = context.read<BusinessProvider>().categoryOrder;
+    final business = context.read<BusinessProvider>();
+    _subOrder = business.subCategoryOrder;
+    final savedOrder = business.categoryOrder;
     final allCats = _allProducts
         .map((p) => p.category)
         .where((c) => c.isNotEmpty)
@@ -995,10 +1004,15 @@ class _ProductPickerScreenState extends State<ProductPickerScreen> {
       MaterialPageRoute(
         builder: (_) => CategoryReorderScreen(
           categories: List<String>.from(_orderedCategories),
+          subCategoryOrder: List<String>.from(_subOrder),
           products: _allProducts,
           onSaveCategories: (ordered) {
             context.read<BusinessProvider>().saveCategoryOrder(ordered);
             setState(() => _orderedCategories = ordered);
+          },
+          onSaveSubCategories: (ordered) {
+            context.read<BusinessProvider>().saveSubCategoryOrder(ordered);
+            setState(() => _subOrder = ordered);
           },
         ),
       ),
@@ -1011,31 +1025,40 @@ class _ProductPickerScreenState extends State<ProductPickerScreen> {
   List<Product> get _uncategorized =>
       _allProducts.where((p) => p.category.isEmpty).toList();
 
-  /// Grouped search results: each entry is a (label, products) pair.
-  /// Category name match → show all products in that category.
+  bool _matchesText(Product p, String q) =>
+      p.name.toLowerCase().contains(q) ||
+      p.description.toLowerCase().contains(q);
+
+  /// Grouped search results: one entry per (category, sub-category) pair.
+  /// A matching category or sub-category name → show everything filed under it.
   /// Otherwise → show only products whose name/description matches.
   List<({String label, List<Product> products})> get _searchGroups {
     final q = _query;
     final results = <({String label, List<Product> products})>[];
     for (final cat in _orderedCategories) {
-      final products = _productsFor(cat);
       final catMatches = cat.toLowerCase().contains(q);
-      final matched = catMatches
-          ? products
-          : products
-              .where((p) =>
-                  p.name.toLowerCase().contains(q) ||
-                  p.description.toLowerCase().contains(q))
-              .toList();
-      if (matched.isNotEmpty) {
-        results.add((label: _toTitleCase(cat), products: matched));
+      // Sub-categories first, then products filed directly under the category.
+      for (final sub in [
+        ...orderedSubCategoriesIn(_allProducts, cat, _subOrder),
+        '',
+      ]) {
+        final group = productsIn(_allProducts, cat, sub);
+        if (group.isEmpty) continue;
+        final subMatches = sub.isNotEmpty && sub.toLowerCase().contains(q);
+        final matched = catMatches || subMatches
+            ? group
+            : group.where((p) => _matchesText(p, q)).toList();
+        if (matched.isEmpty) continue;
+        results.add((
+          label: sub.isEmpty
+              ? _toTitleCase(cat)
+              : '${_toTitleCase(cat)} › ${_toTitleCase(sub)}',
+          products: matched,
+        ));
       }
     }
-    final matchedUncat = _uncategorized
-        .where((p) =>
-            p.name.toLowerCase().contains(q) ||
-            p.description.toLowerCase().contains(q))
-        .toList();
+    final matchedUncat =
+        _uncategorized.where((p) => _matchesText(p, q)).toList();
     if (matchedUncat.isNotEmpty) {
       results.add((label: 'Overig', products: matchedUncat));
     }
@@ -1053,6 +1076,59 @@ class _ProductPickerScreenState extends State<ProductPickerScreen> {
       ),
     );
     Navigator.pop(ctx);
+  }
+
+  Widget _productSliver(
+    List<Product> products,
+    String currency,
+    double taxRate,
+  ) {
+    return SliverList(
+      delegate: SliverChildBuilderDelegate(
+        (ctx, i) {
+          final p = products[i];
+          return _ProductTile(
+            product: p,
+            currency: currency,
+            taxRate: taxRate,
+            onTap: () => _addToInvoice(ctx, p),
+          );
+        },
+        childCount: products.length,
+      ),
+    );
+  }
+
+  /// Slivers for the contents of an open category: its sub-category headers
+  /// (each its own accordion) followed by the products filed directly under it.
+  /// A category without sub-categories just lists its products, as before.
+  List<Widget> _categoryBody(String cat, String currency, double taxRate) {
+    final subs = orderedSubCategoriesIn(_allProducts, cat, _subOrder);
+    final loose = productsIn(_allProducts, cat, '');
+    if (subs.isEmpty) return [_productSliver(loose, currency, taxRate)];
+
+    final slivers = <Widget>[];
+    for (final sub in [...subs, '']) {
+      final products = sub.isEmpty ? loose : productsIn(_allProducts, cat, sub);
+      if (products.isEmpty) continue;
+      final key = subCategoryKey(cat, sub);
+      slivers.add(
+        SliverToBoxAdapter(
+          child: SubCategoryHeader(
+            label: sub.isEmpty ? 'Overig' : _toTitleCase(sub),
+            count: products.length,
+            isExpanded: _expandedSub == key,
+            onTap: () => setState(
+              () => _expandedSub = _expandedSub == key ? null : key,
+            ),
+          ),
+        ),
+      );
+      if (_expandedSub == key) {
+        slivers.add(_productSliver(products, currency, taxRate));
+      }
+    }
+    return slivers;
   }
 
   Widget _searchBar(BuildContext context) {
@@ -1206,24 +1282,12 @@ class _ProductPickerScreenState extends State<ProductPickerScreen> {
                 isExpanded: _expandedCategory == cat,
                 onTap: () => setState(() {
                   _expandedCategory = _expandedCategory == cat ? null : cat;
+                  _expandedSub = null;
                 }),
               ),
             ),
             if (_expandedCategory == cat)
-              SliverList(
-                delegate: SliverChildBuilderDelegate(
-                  (ctx, i) {
-                    final p = _productsFor(cat)[i];
-                    return _ProductTile(
-                      product: p,
-                      currency: currency,
-                      taxRate: taxRate,
-                      onTap: () => _addToInvoice(ctx, p),
-                    );
-                  },
-                  childCount: _productsFor(cat).length,
-                ),
-              ),
+              ..._categoryBody(cat, currency, taxRate),
           ],
           if (uncategorized.isNotEmpty) ...[
             SliverToBoxAdapter(
@@ -1233,24 +1297,12 @@ class _ProductPickerScreenState extends State<ProductPickerScreen> {
                 isExpanded: _expandedCategory == '',
                 onTap: () => setState(() {
                   _expandedCategory = _expandedCategory == '' ? null : '';
+                  _expandedSub = null;
                 }),
               ),
             ),
             if (_expandedCategory == '')
-              SliverList(
-                delegate: SliverChildBuilderDelegate(
-                  (ctx, i) {
-                    final p = uncategorized[i];
-                    return _ProductTile(
-                      product: p,
-                      currency: currency,
-                      taxRate: taxRate,
-                      onTap: () => _addToInvoice(ctx, p),
-                    );
-                  },
-                  childCount: uncategorized.length,
-                ),
-              ),
+              _productSliver(uncategorized, currency, taxRate),
           ],
           const SliverToBoxAdapter(child: SizedBox(height: 32)),
         ],
@@ -1421,6 +1473,7 @@ class _ItemFormSheetState extends State<_ItemFormSheet> {
   bool _updatingPrice = false;
   bool _saveAsProduct = false;
   String? _selectedCategory;
+  String? _selectedSubCategory;
   double? _preciseExclFromIncl;
 
   final _omschrijvingFocus = FocusNode();
@@ -1527,6 +1580,8 @@ class _ItemFormSheetState extends State<_ItemFormSheet> {
             name: _omschrijving.text.trim(),
             price: prijsExBtw,
             category: _selectedCategory ?? '',
+            subCategory:
+                _selectedCategory == null ? '' : (_selectedSubCategory ?? ''),
           ),
         );
       }
@@ -1571,7 +1626,7 @@ class _ItemFormSheetState extends State<_ItemFormSheet> {
               controller: _omschrijving,
               focusNode: _omschrijvingFocus,
               textInputAction: TextInputAction.next,
-              textCapitalization: TextCapitalization.sentences,
+              textCapitalization: TextCapitalization.words,
               onFieldSubmitted: (_) =>
                   FocusScope.of(context).requestFocus(_aantalFocus),
               decoration: const InputDecoration(labelText: 'Omschrijving *'),
@@ -1643,16 +1698,32 @@ class _ItemFormSheetState extends State<_ItemFormSheet> {
                 controlAffinity: ListTileControlAffinity.leading,
                 title: const Text('Ook opslaan in producten'),
               ),
-              if (_saveAsProduct)
+              if (_saveAsProduct) ...[
                 Padding(
                   padding: const EdgeInsets.only(bottom: 12),
                   child: CategorySelectorField(
                     selected: _selectedCategory,
                     categories: context.watch<ProductProvider>().categories,
-                    onChanged: (cat) =>
-                        setState(() => _selectedCategory = cat),
+                    onChanged: (cat) => setState(() {
+                      _selectedCategory = cat;
+                      // Sub-categories live inside one category.
+                      _selectedSubCategory = null;
+                    }),
                   ),
                 ),
+                if (_selectedCategory != null)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 12),
+                    child: CategorySelectorField.sub(
+                      selected: _selectedSubCategory,
+                      categories: context
+                          .watch<ProductProvider>()
+                          .subCategoriesFor(_selectedCategory!),
+                      onChanged: (sub) =>
+                          setState(() => _selectedSubCategory = sub),
+                    ),
+                  ),
+              ],
             ],
             const SizedBox(height: 8),
             SizedBox(

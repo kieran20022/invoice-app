@@ -47,6 +47,16 @@ class FirestoreService {
         .set({'categoryOrder': order}, SetOptions(merge: true));
   }
 
+  /// [order] holds `'<category>::<sub>'` keys across all categories.
+  Future<void> saveSubCategoryOrder(String userId, List<String> order) async {
+    await _db
+        .collection('users')
+        .doc(userId)
+        .collection('settings')
+        .doc('business')
+        .set({'subCategoryOrder': order}, SetOptions(merge: true));
+  }
+
   // Merge-writes only the logo so it survives even before full business info is saved.
   Future<void> saveLogoUrl(String userId, String? logoBase64) async {
     await _db
@@ -143,6 +153,35 @@ class FirestoreService {
     final batch = _db.batch();
     for (var i = 0; i < orderedIds.length; i++) {
       batch.set(col.doc(orderedIds[i]), {'sortOrder': i}, SetOptions(merge: true));
+    }
+    await batch.commit();
+  }
+
+  /// Moves several products to one category in a single batch. Used to rename
+  /// a category, which is really a rewrite of every product carrying it.
+  Future<void> saveProductCategory(
+    String userId,
+    List<String> productIds,
+    String category,
+  ) async {
+    final col = _db.collection('users').doc(userId).collection('products');
+    final batch = _db.batch();
+    for (final id in productIds) {
+      batch.set(col.doc(id), {'category': category}, SetOptions(merge: true));
+    }
+    await batch.commit();
+  }
+
+  /// Files several products under one sub-category in a single batch.
+  Future<void> saveProductSubCategory(
+    String userId,
+    List<String> productIds,
+    String subCategory,
+  ) async {
+    final col = _db.collection('users').doc(userId).collection('products');
+    final batch = _db.batch();
+    for (final id in productIds) {
+      batch.set(col.doc(id), {'subCategory': subCategory}, SetOptions(merge: true));
     }
     await batch.commit();
   }

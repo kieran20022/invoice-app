@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import '../models/business_info.dart';
+import '../models/product.dart';
 import '../services/firestore_service.dart';
 
 class BusinessProvider extends ChangeNotifier {
@@ -21,6 +22,7 @@ class BusinessProvider extends ChangeNotifier {
   List<String> get favoriteCategories =>
       _businessInfo?.favoriteCategories ?? [];
   List<String> get categoryOrder => _businessInfo?.categoryOrder ?? [];
+  List<String> get subCategoryOrder => _businessInfo?.subCategoryOrder ?? [];
 
   ThemeMode get themeMode => switch (_businessInfo?.themeMode) {
         'light' => ThemeMode.light,
@@ -95,6 +97,62 @@ class BusinessProvider extends ChangeNotifier {
   Future<void> saveCategoryOrder(List<String> order) async {
     if (_userId == null) return;
     await _firestore.saveCategoryOrder(_userId!, order);
+  }
+
+  Future<void> saveSubCategoryOrder(List<String> order) async {
+    if (_userId == null) return;
+    await _firestore.saveSubCategoryOrder(_userId!, order);
+  }
+
+  /// Follows a category rename through the saved orders and the favourites.
+  /// The product documents are rewritten by [ProductProvider.renameCategory].
+  Future<void> renameCategory(String from, String to) async {
+    if (_userId == null || from == to) return;
+    final oldPrefix = subCategoryKey(from, '');
+    await Future.wait([
+      _firestore.saveCategoryOrder(
+        _userId!,
+        _replaced(categoryOrder, (c) => c == from ? to : c),
+      ),
+      _firestore.saveFavoriteCategories(
+        _userId!,
+        _replaced(favoriteCategories, (c) => c == from ? to : c),
+      ),
+      _firestore.saveSubCategoryOrder(
+        _userId!,
+        _replaced(
+          subCategoryOrder,
+          (key) => key.startsWith(oldPrefix)
+              ? subCategoryKey(to, key.substring(oldPrefix.length))
+              : key,
+        ),
+      ),
+    ]);
+  }
+
+  /// Follows a sub-category rename through the saved sub-category order.
+  Future<void> renameSubCategory(
+    String category,
+    String from,
+    String to,
+  ) async {
+    if (_userId == null || from == to) return;
+    final oldKey = subCategoryKey(category, from);
+    final newKey = subCategoryKey(category, to);
+    await _firestore.saveSubCategoryOrder(
+      _userId!,
+      _replaced(subCategoryOrder, (key) => key == oldKey ? newKey : key),
+    );
+  }
+
+  /// Maps [list] through [rename], dropping duplicates the rename creates —
+  /// renaming onto an existing name merges the two entries into one.
+  List<String> _replaced(List<String> list, String Function(String) rename) {
+    final seen = <String>{};
+    return [
+      for (final value in list)
+        if (seen.add(rename(value))) rename(value),
+    ];
   }
 
   Future<void> removeLogo() async {

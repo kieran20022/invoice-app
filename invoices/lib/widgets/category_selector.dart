@@ -11,29 +11,58 @@ class CategorySelectorField extends StatelessWidget {
   final List<String> categories;
   final ValueChanged<String?> onChanged;
 
+  /// Field label, sheet title, "nothing selected" text and search hint. The
+  /// defaults describe categories; the sub-category field overrides them.
+  final String label;
+  final String title;
+  final String noneLabel;
+  final String hintText;
+
+  /// A disabled field still renders (greyed) but does not open the picker —
+  /// used for the sub-category field while no category is chosen.
+  final bool enabled;
+
   const CategorySelectorField({
     super.key,
     required this.selected,
     required this.categories,
     required this.onChanged,
+    this.label = 'Categorie (optioneel)',
+    this.title = 'Categorie',
+    this.noneLabel = 'Geen categorie',
+    this.hintText = 'Zoeken of nieuwe categorie...',
+    this.enabled = true,
   });
+
+  /// Pre-configured for picking a sub-category inside a category.
+  const CategorySelectorField.sub({
+    super.key,
+    required this.selected,
+    required this.categories,
+    required this.onChanged,
+    this.enabled = true,
+  })  : label = 'Sub-categorie (optioneel)',
+        title = 'Sub-categorie',
+        noneLabel = 'Geen sub-categorie',
+        hintText = 'Zoeken of nieuwe sub-categorie...';
 
   @override
   Widget build(BuildContext context) {
     final hasValue = selected != null && selected!.isNotEmpty;
     return InkWell(
-      onTap: () => _showPicker(context),
+      onTap: enabled ? () => _showPicker(context) : null,
       borderRadius: BorderRadius.circular(4),
       child: InputDecorator(
-        decoration: const InputDecoration(
-          labelText: 'Categorie (optioneel)',
-          suffixIcon: Icon(Icons.arrow_drop_down),
+        decoration: InputDecoration(
+          labelText: label,
+          enabled: enabled,
+          suffixIcon: const Icon(Icons.arrow_drop_down),
         ),
         child: Text(
-          hasValue ? toTitleCase(selected!) : 'Geen categorie',
+          hasValue ? toTitleCase(selected!) : noneLabel,
           style: TextStyle(
             fontSize: 16,
-            color: hasValue ? null : AppTheme.textSecondary,
+            color: hasValue && enabled ? null : AppTheme.textSecondary,
           ),
         ),
       ),
@@ -50,6 +79,9 @@ class CategorySelectorField extends StatelessWidget {
       builder: (_) => CategoryPickerSheet(
         categories: categories,
         selected: selected,
+        title: title,
+        noneLabel: noneLabel,
+        hintText: hintText,
         onSelected: (cat) {
           onChanged(cat);
           Navigator.pop(context);
@@ -59,16 +91,131 @@ class CategorySelectorField extends StatelessWidget {
   }
 }
 
+/// Accordion header for a sub-category. Indented and lighter than the category
+/// header it nests under. Shared by the products screen and the invoice product
+/// picker so both levels look identical in either place.
+class SubCategoryHeader extends StatelessWidget {
+  final String label;
+  final int count;
+  final bool isExpanded;
+  final VoidCallback onTap;
+
+  /// Shows a rename button while the header is open. Null where the list is
+  /// only there to pick from, such as the invoice product picker.
+  final VoidCallback? onRename;
+
+  const SubCategoryHeader({
+    super.key,
+    required this.label,
+    required this.count,
+    required this.isExpanded,
+    required this.onTap,
+    this.onRename,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: AppTheme.bg(context),
+      child: InkWell(
+        onTap: onTap,
+        child: Container(
+          height: 44,
+          padding: const EdgeInsets.only(left: 32, right: 16),
+          decoration: BoxDecoration(
+            border: Border(
+              bottom: BorderSide(color: AppTheme.borderOf(context)),
+            ),
+          ),
+          child: Row(
+            children: [
+              Icon(
+                Icons.subdirectory_arrow_right,
+                size: 15,
+                color: isExpanded
+                    ? AppTheme.primary
+                    : AppTheme.onSurfaceVariant(context),
+              ),
+              const SizedBox(width: 8),
+              // The label and its count share one flexible box so the chevron
+              // keeps the same position whatever the label's length.
+              Expanded(
+                child: Row(
+                  children: [
+                    Flexible(
+                      child: Text(
+                        label,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          fontWeight: FontWeight.w600,
+                          fontSize: 13.5,
+                          color: isExpanded
+                              ? AppTheme.primary
+                              : AppTheme.onSurface(context),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Text(
+                      '$count',
+                      style: const TextStyle(
+                        fontSize: 11,
+                        color: AppTheme.textSecondary,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              if (isExpanded && onRename != null)
+                IconButton(
+                  icon: const Icon(Icons.drive_file_rename_outline, size: 17),
+                  tooltip: 'Hernoemen',
+                  onPressed: onRename,
+                  color: AppTheme.primary,
+                  visualDensity: VisualDensity.compact,
+                  padding: EdgeInsets.zero,
+                  constraints: const BoxConstraints.tightFor(
+                    width: 32,
+                    height: 32,
+                  ),
+                ),
+              const SizedBox(width: 8),
+              AnimatedRotation(
+                turns: isExpanded ? 0.5 : 0,
+                duration: const Duration(milliseconds: 200),
+                child: Icon(
+                  Icons.expand_more,
+                  size: 20,
+                  color: isExpanded
+                      ? AppTheme.primary
+                      : AppTheme.onSurfaceVariant(context),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 class CategoryPickerSheet extends StatefulWidget {
   final List<String> categories;
   final String? selected;
   final ValueChanged<String?> onSelected;
+  final String title;
+  final String noneLabel;
+  final String hintText;
 
   const CategoryPickerSheet({
     super.key,
     required this.categories,
     required this.selected,
     required this.onSelected,
+    this.title = 'Categorie',
+    this.noneLabel = 'Geen categorie',
+    this.hintText = 'Zoeken of nieuwe categorie...',
   });
 
   @override
@@ -120,9 +267,12 @@ class _CategoryPickerSheetState extends State<CategoryPickerSheet> {
         children: [
           Row(
             children: [
-              const Text(
-                'Categorie',
-                style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
+              Text(
+                widget.title,
+                style: const TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.w700,
+                ),
               ),
               const Spacer(),
               IconButton(
@@ -135,9 +285,11 @@ class _CategoryPickerSheetState extends State<CategoryPickerSheet> {
           TextField(
             controller: _searchCtrl,
             autofocus: true,
-            textCapitalization: TextCapitalization.none,
+            // Doubles as the "new category" field, so names start capitalised.
+            // Matching and storage lowercase anyway.
+            textCapitalization: TextCapitalization.words,
             decoration: InputDecoration(
-              hintText: 'Zoeken of nieuwe categorie...',
+              hintText: widget.hintText,
               prefixIcon: const Icon(Icons.search),
               suffixIcon: _searchCtrl.text.isNotEmpty
                   ? IconButton(
@@ -166,7 +318,7 @@ class _CategoryPickerSheetState extends State<CategoryPickerSheet> {
                     Icons.label_off_outlined,
                     color: noneSelected ? AppTheme.primary : null,
                   ),
-                  title: const Text('Geen categorie'),
+                  title: Text(widget.noneLabel),
                   selected: noneSelected,
                   selectedColor: AppTheme.primary,
                   onTap: () => widget.onSelected(null),
