@@ -115,7 +115,7 @@ class PdfService {
                     child: pw.Column(
                       crossAxisAlignment: pw.CrossAxisAlignment.end,
                       children: [
-                        _infoRow('Factuurnummer', invoice.invoiceNumber),
+                        _infoRow('Factuurnummer', invoice.numberLabel),
                         _infoRow('Datum', _date(invoice.issueDate)),
                       ],
                     ),

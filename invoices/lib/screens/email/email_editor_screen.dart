@@ -6,6 +6,7 @@ import '../../models/invoice.dart';
 import '../../providers/business_provider.dart';
 import '../../services/email_service.dart';
 import '../../services/pdf_service.dart';
+import '../../services/whatsapp_service.dart';
 
 class EmailEditorScreen extends StatefulWidget {
   final Invoice invoice;
@@ -21,12 +22,24 @@ class _EmailEditorScreenState extends State<EmailEditorScreen> {
   late String _renderedBody;
   bool _sending = false;
 
+  /// Android with WhatsApp installed — only then can we target a number.
+  bool _whatsappAvailable = false;
+
+  /// The client's number in WhatsApp's format, or null when unusable/absent.
+  String? get _clientPhone =>
+      WhatsappService.normalizePhone(widget.invoice.clientTelefoonnummer);
+
+  bool get _canWhatsapp => _whatsappAvailable && _clientPhone != null;
+
   @override
   void initState() {
     super.initState();
     _recipient = TextEditingController();
     _subject = EmailService.buildDefaultSubject(widget.invoice);
     _renderedBody = '';
+    WhatsappService.isAvailable().then((available) {
+      if (mounted) setState(() => _whatsappAvailable = available);
+    });
   }
 
   @override
@@ -113,6 +126,51 @@ class _EmailEditorScreenState extends State<EmailEditorScreen> {
         ),
       );
       setState(() => _sending = false);
+    }
+  }
+
+  /// Hands the PDF to the client's own WhatsApp chat, skipping the share sheet.
+  Future<void> _sendViaWhatsapp() async {
+    if (_clientPhone == null) return;
+
+    setState(() => _sending = true);
+    try {
+      final logoBytes = context.read<BusinessProvider>().logoBytes;
+      final pdfBytes = await PdfService.generatePdf(
+        widget.invoice,
+        logoBytes: logoBytes,
+      );
+
+      // WhatsApp drops EXTRA_TEXT when a document is attached, so the message
+      // goes to the clipboard for the user to paste — same as the share flow.
+      final shareText = '$_subject\n\n$_renderedBody';
+      await Clipboard.setData(ClipboardData(text: shareText));
+
+      await WhatsappService.shareInvoiceToNumber(
+        invoice: widget.invoice,
+        pdfBytes: pdfBytes,
+        phone: widget.invoice.clientTelefoonnummer,
+        text: shareText,
+      );
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Bericht gekopieerd — plak het in WhatsApp'),
+          behavior: SnackBarBehavior.floating,
+          duration: Duration(seconds: 4),
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('WhatsApp openen mislukt: $e'),
+          behavior: SnackBarBehavior.floating,
+          backgroundColor: AppTheme.error,
+        ),
+      );
+    } finally {
+      if (mounted) setState(() => _sending = false);
     }
   }
 
@@ -250,6 +308,22 @@ class _EmailEditorScreenState extends State<EmailEditorScreen> {
             label: Text(_sending ? 'Bezig...' : 'Verstuur via e-mail app'),
           ),
 
+          if (_canWhatsapp) ...[
+            const SizedBox(height: 12),
+            ElevatedButton.icon(
+              onPressed: _sending ? null : _sendViaWhatsapp,
+              style: ElevatedButton.styleFrom(
+                backgroundColor: _whatsappGreen,
+                foregroundColor: Colors.white,
+              ),
+              icon: const Icon(Icons.chat, size: 18),
+              label: Text(
+                'Direct naar ${widget.invoice.clientTelefoonnummer} '
+                'via WhatsApp',
+              ),
+            ),
+          ],
+
           const SizedBox(height: 12),
 
           OutlinedButton.icon(
@@ -264,3 +338,6 @@ class _EmailEditorScreenState extends State<EmailEditorScreen> {
     );
   }
 }
+
+/// WhatsApp brand green, used only to mark the direct-send affordance.
+const Color _whatsappGreen = Color(0xFF25D366);

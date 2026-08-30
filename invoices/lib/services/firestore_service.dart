@@ -2,6 +2,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import '../models/business_info.dart';
 import '../models/client.dart';
 import '../models/product.dart';
+import '../models/vehicle.dart';
 import '../models/invoice.dart';
 
 class FirestoreService {
@@ -232,5 +233,41 @@ class FirestoreService {
 
   Future<void> deleteInvoice(String userId, String invoiceId) async {
     await _db.collection('users').doc(userId).collection('invoices').doc(invoiceId).delete();
+  }
+
+  // ── Vehicles ───────────────────────────────────────────────────────
+
+  /// Vehicles in the shop, most recently added first.
+  Stream<List<Vehicle>> vehiclesStream(String userId) {
+    return _db
+        .collection('users')
+        .doc(userId)
+        .collection('vehicles')
+        .orderBy('createdAt', descending: true)
+        .snapshots()
+        .map((snap) => snap.docs.map((d) => Vehicle.fromMap(d.id, d.data())).toList());
+  }
+
+  Future<String> saveVehicle(String userId, Vehicle vehicle) async {
+    if (vehicle.id.isEmpty) {
+      final ref = await _db
+          .collection('users')
+          .doc(userId)
+          .collection('vehicles')
+          .add(vehicle.toMap());
+      return ref.id;
+    } else {
+      await _db
+          .collection('users')
+          .doc(userId)
+          .collection('vehicles')
+          .doc(vehicle.id)
+          .set(vehicle.toMap());
+      return vehicle.id;
+    }
+  }
+
+  Future<void> deleteVehicle(String userId, String vehicleId) async {
+    await _db.collection('users').doc(userId).collection('vehicles').doc(vehicleId).delete();
   }
 }

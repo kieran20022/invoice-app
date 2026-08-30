@@ -13,7 +13,9 @@ Invoice app. Used for generating invoices for clients. Simple interface where us
 7. Invoice history: List of all invoices with search, filter by status (draft/sent/paid), and revenue stats.
 8. Products: Saved product/service list with name, description, price, unit. Organised in categories and optional sub-categories (created when adding a product, or in bulk by long-pressing products in one category and selecting them). Quickly added to invoices.
 9. Custom one-time products: Custom items added to invoices without saving to product list.
-10. Send email: Share invoice PDF with subject and message via native share sheet (email clients receive subject + body; WhatsApp receives `*Subject*\n\nMessage`). Optional server-side sending via Firebase Cloud Functions + SMTP.
+10. Voertuigen: Vehicles currently in the shop, each tied to a "current" invoice. Adding a vehicle (phone number + optional name + plate) immediately creates its invoice in the workshop buffer; tapping the vehicle opens that invoice at the Producten step, and closing the screen persists the items added. The card shows the name when there is one, the number otherwise. The ⋮ menu has "Concept delen" (shares the still-unnumbered PDF), "Verwijderen en delen" (takes the vehicle out of the shop, numbers its invoice and opens the share sheet for it) and "Uit werkplaats halen" (releases the invoice into the Facturen tab without sharing).
+11. Direct WhatsApp send: When the invoice carries a client phone number, a green "Direct naar <nummer> via WhatsApp" option appears on `email_editor_screen.dart`, opening that contact's chat with the PDF attached. Android only (needs an explicit intent); hidden elsewhere and when WhatsApp is not installed. NOTE: nothing currently navigates to `EmailEditorScreen`, so this option has no entry point in the running app.
+12. Send email: Share invoice PDF with subject and message via native share sheet (email clients receive subject + body; WhatsApp receives `*Subject*\n\nMessage`). Optional server-side sending via Firebase Cloud Functions + SMTP.
 
 # App Workflow
 
@@ -28,7 +30,7 @@ Invoice app. Used for generating invoices for clients. Simple interface where us
 
 Clean and professional, Material 3. Primary colour: `#2563EB` (blue).
 
-- Bottom navigation: Invoices | + New | Products | Settings
+- Bottom navigation: Invoices | Vehicles | Products | Settings
 - 4-step Stepper for invoice creation — user can tap back to any previous step.
 - Invoice history shows running totals (total, paid, unpaid) and overdue highlighting.
 - Invoice numbers auto-generated (e.g. `INV-0001`). Starting number configurable in Settings.
@@ -59,17 +61,20 @@ lib/
     client.dart                Client contact info
     product.dart               Saved product/service
     invoice.dart               Invoice + InvoiceItem (snapshots, no FK refs)
+    vehicle.dart               Vehicle in the shop (phone, name, plate) + invoice id
   services/
     auth_service.dart          Google Sign-In (web popup / mobile native)
     firestore_service.dart     CRUD for all Firestore collections
     storage_service.dart       Firebase Storage upload/delete for logo
     pdf_service.dart           3 PDF templates (Modern, Classic, Minimal)
     email_service.dart         shareInvoice() via Share.shareXFiles + cloud function
+    whatsapp_service.dart      Direct-to-number WhatsApp share via platform channel
   providers/
     auth_provider.dart         Wraps FirebaseAuth.authStateChanges()
     business_provider.dart     Streams business info; setUserId() pattern
     product_provider.dart      Streams product list; setUserId() pattern
     invoice_provider.dart      Streams history + manages draft state
+    vehicle_provider.dart      Streams vehicles in the shop; setUserId() pattern
   screens/
     auth/login_screen.dart
     home/home_screen.dart
@@ -78,7 +83,11 @@ lib/
     invoices/create_invoice_screen.dart
     invoices/invoice_preview_screen.dart
     invoices/invoice_history_screen.dart
+    vehicles/vehicles_screen.dart
     email/email_editor_screen.dart
+  utils/
+    price.dart                 Price rounding/formatting at stored precision
+    phone_format.dart          PhonePairFormatter — pairs digits while typing
 functions/
   index.js                     Firebase Cloud Function: sendInvoiceEmail
   package.json
@@ -100,6 +109,8 @@ users/{uid}/
   settings/business        BusinessInfo document (also stores nextInvoiceNumber)
   clients/{id}             Client documents
   products/{id}            Product documents
+  vehicles/{id}            Vehicles in the shop (phone, name, plate, invoiceId)
+                           Legacy docs carry `ownerName`; read as `name`
   invoices/{id}            Invoice documents (full snapshots, not references)
 ```
 
@@ -112,6 +123,60 @@ Three templates in `pdf_service.dart`. All use `const PdfColor(r, g, b)` float c
 - **Modern**: Blue header block, alternating row colours, coloured totals
 - **Classic**: Full bordered table, traditional layout
 - **Minimal**: Clean lines, accent colour totals box
+
+## Workshop Buffer
+
+An invoice created for a vehicle is saved with `status: 'werkplaats'`
+(`InvoiceProvider.workshopStatus`) instead of `'concept'`. `InvoiceProvider`
+exposes two lists:
+
+- `invoices` — everything outside the buffer. This is what the Facturen tab and
+  the revenue stats read, so a job still in the shop does not count as an
+  invoice yet.
+- `allInvoices` — including the buffer. The Voertuigen tab needs it to find a
+  vehicle's invoice by id.
+
+Taking a vehicle out of the shop flips its invoice to `'concept'` *before*
+deleting the vehicle — a vehicle deleted while its invoice were still buffered
+would leave that invoice unreachable from either tab.
+
+The invoice number is assigned when the vehicle leaves the shop, not when it is
+booked in (`InvoiceProvider.releaseFromWorkshop`), so a job sitting in the
+buffer for days does not burn a number and leave a gap in the Facturen
+sequence. While buffered, `invoiceNumber` is empty and `Invoice.numberLabel`
+renders it as `Concept` (app bar, vehicle card, PDF, share subject/filename).
+
+## Phone Input
+
+`PhonePairFormatter` (`lib/utils/phone_format.dart`) groups a number's digits in
+pairs (`06 12 34 56 78`) while it is typed, keeping a leading `+` intact. The
+grouping is cosmetic: the vehicle form strips the spaces before saving, so
+Firestore and `WhatsappService` only ever see the compact number. The formatter
+tracks the caret by counting the digits ahead of it rather than its raw offset,
+so inserting mid-number does not throw the cursor to the end. Covered by
+`test/phone_pair_test.dart`.
+
+## Direct WhatsApp Send
+
+The share sheet cannot preselect a recipient, so sending to a known number uses
+a platform channel (`com.bliksemit.Invoices/whatsapp`) handled in
+`android/app/src/main/kotlin/com/bliksemit/Invoices/MainActivity.kt`:
+
+- `isAvailable` — is `com.whatsapp` or `com.whatsapp.w4b` installed. The
+  `<package>` entries in the manifest's `<queries>` are required for this to
+  see them on Android 11+.
+- `shareFileToNumber` — `ACTION_SEND` with the PDF as `EXTRA_STREAM` (through
+  the existing `${applicationId}.provider` FileProvider), `setPackage(...)`, and
+  the undocumented `jid` extra (`<number>@s.whatsapp.net`) that opens that
+  contact's chat rather than WhatsApp's picker.
+
+`WhatsappService.normalizePhone()` converts numbers as typed into the
+digits-only international form (`06-12345678` → `31612345678`); a leading `+`
+means the number already carries its own country code. Default country code is
+`31`.
+
+WhatsApp drops `EXTRA_TEXT` when a document is attached, so the message is
+copied to the clipboard for the user to paste — same as the plain share flow.
 
 ## Email / Share
 

@@ -43,3 +43,8 @@ android {
 flutter {
     source = "../.."
 }
+
+dependencies {
+    // FileProvider, used by MainActivity to hand the invoice PDF to WhatsApp.
+    implementation("androidx.core:core-ktx:1.13.1")
+}

@@ -34,7 +34,7 @@ class _InvoicePreviewScreenState extends State<InvoicePreviewScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        title: Text(_invoice.invoiceNumber),
+        title: Text(_invoice.numberLabel),
         actions: [
           PopupMenuButton<String>(
             icon: const Icon(Icons.more_vert),
@@ -68,7 +68,7 @@ class _InvoicePreviewScreenState extends State<InvoicePreviewScreen> {
                       : _invoice.clientProductType.isNotEmpty
                       ? '${_invoice.clientNaam} · ${_invoice.clientProductType}'
                       : _invoice.clientNaam,
-                  icon: Icons.directions_car_outlined,
+                  icon: Icons.moped_outlined,
                 ),
                 const Spacer(),
                 _StatusBadge(status: _invoice.status),

@@ -99,7 +99,7 @@ class EmailService {
         ? invoice.clientKenteken
         : invoice.clientProductType;
     return ref.isNotEmpty
-        ? '${invoice.invoiceNumber} - $ref'
-        : invoice.invoiceNumber;
+        ? '${invoice.numberLabel} - $ref'
+        : invoice.numberLabel;
   }
 }

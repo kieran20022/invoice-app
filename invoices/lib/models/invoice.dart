@@ -120,9 +120,13 @@ class Invoice {
   // Legacy alias used in PDF/email formatting
   double get total => totaalInclBtw;
 
+  /// Invoice number for display. A vehicle still in the workshop has no number
+  /// yet — it only gets one when it leaves the shop.
+  String get numberLabel => invoiceNumber.isEmpty ? 'Concept' : invoiceNumber;
+
   String get pdfFilename {
     final ref = clientKenteken.isNotEmpty ? clientKenteken : clientProductType;
-    return ref.isNotEmpty ? '$invoiceNumber - $ref.pdf' : '$invoiceNumber.pdf';
+    return ref.isNotEmpty ? '$numberLabel - $ref.pdf' : '$numberLabel.pdf';
   }
 
   Map<String, dynamic> toMap() => {

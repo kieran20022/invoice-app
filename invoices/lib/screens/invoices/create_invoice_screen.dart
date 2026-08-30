@@ -23,10 +23,17 @@ String _toTitleCase(String s) => s
 class CreateInvoiceScreen extends StatefulWidget {
   final Invoice? editInvoice;
   final int initialStep;
+
+  /// Persists the draft when the screen is closed instead of discarding it.
+  /// Used by the Voertuigen tab, where an invoice is worked on across visits
+  /// and items added must survive backing out of the screen.
+  final bool saveOnClose;
+
   const CreateInvoiceScreen({
     super.key,
     this.editInvoice,
     this.initialStep = 0,
+    this.saveOnClose = false,
   });
 
   @override
@@ -186,6 +193,22 @@ class _CreateInvoiceScreenState extends State<CreateInvoiceScreen> {
     }
   }
 
+  /// Leaves the screen, keeping or dropping the draft per [saveOnClose].
+  Future<void> _close() async {
+    final invoices = context.read<InvoiceProvider>();
+    if (widget.saveOnClose && widget.editInvoice != null) {
+      try {
+        await invoices.saveDraft();
+      } catch (_) {
+        invoices.clearDraft();
+      }
+    } else {
+      invoices.clearDraft();
+    }
+    if (!mounted) return;
+    Navigator.pop(context);
+  }
+
   void _showProductPicker() {
     final products = context.read<ProductProvider>().products;
     if (products.isEmpty) {
@@ -227,6 +250,16 @@ class _CreateInvoiceScreenState extends State<CreateInvoiceScreen> {
 
   @override
   Widget build(BuildContext context) {
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, _) {
+        if (!didPop) _close();
+      },
+      child: _buildScaffold(context),
+    );
+  }
+
+  Widget _buildScaffold(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
         title: Text(
@@ -234,10 +267,7 @@ class _CreateInvoiceScreenState extends State<CreateInvoiceScreen> {
         ),
         leading: IconButton(
           icon: const Icon(Icons.close),
-          onPressed: () {
-            context.read<InvoiceProvider>().clearDraft();
-            Navigator.pop(context);
-          },
+          onPressed: _close,
         ),
       ),
       body: Column(
@@ -300,6 +330,11 @@ class _CreateInvoiceScreenState extends State<CreateInvoiceScreen> {
   Widget _buildNavBar() {
     final isLast = _step == 2;
     final isItems = _step == 1;
+
+    // The vehicle flow saves and returns to the Voertuigen list rather than
+    // opening the finished invoice, so its last step continues instead of
+    // promising a preview.
+    final finishesInPlace = isLast && widget.saveOnClose;
 
     return Container(
       decoration: BoxDecoration(
@@ -374,7 +409,9 @@ class _CreateInvoiceScreenState extends State<CreateInvoiceScreen> {
                                 ),
                               )
                             : Icon(
-                                isLast
+                                finishesInPlace
+                                    ? Icons.check
+                                    : isLast
                                     ? Icons.visibility_outlined
                                     : Icons.arrow_forward,
                                 size: 18,
@@ -382,6 +419,8 @@ class _CreateInvoiceScreenState extends State<CreateInvoiceScreen> {
                         label: Text(
                           _saving
                               ? 'Bezig...'
+                              : finishesInPlace
+                              ? 'Doorgaan'
                               : isLast
                               ? 'Naar Factuur'
                               : 'Volgende',

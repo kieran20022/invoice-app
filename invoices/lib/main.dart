@@ -8,6 +8,7 @@ import 'providers/auth_provider.dart';
 import 'providers/business_provider.dart';
 import 'providers/invoice_provider.dart';
 import 'providers/product_provider.dart';
+import 'providers/vehicle_provider.dart';
 import 'screens/auth/login_screen.dart';
 import 'screens/business/business_info_screen.dart';
 import 'screens/home/home_screen.dart';
@@ -46,6 +47,13 @@ class InvoiceApp extends StatelessWidget {
           update: (_, auth, invoices) {
             invoices!.setUserId(auth.user?.uid);
             return invoices;
+          },
+        ),
+        ChangeNotifierProxyProvider<AuthProvider, VehicleProvider>(
+          create: (_) => VehicleProvider(),
+          update: (_, auth, vehicles) {
+            vehicles!.setUserId(auth.user?.uid);
+            return vehicles;
           },
         ),
       ],

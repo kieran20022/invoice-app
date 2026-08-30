@@ -6,17 +6,29 @@ import '../models/business_info.dart';
 import '../services/firestore_service.dart';
 
 class InvoiceProvider extends ChangeNotifier {
+  /// Status of an invoice still being built up for a vehicle in the shop.
+  /// These are held back from the Facturen tab until the vehicle leaves the
+  /// workshop, so a job in progress does not sit among finished invoices.
+  static const workshopStatus = 'werkplaats';
+
   final FirestoreService _firestore = FirestoreService();
   final _uuid = const Uuid();
 
-  List<Invoice> _invoices = [];
+  List<Invoice> _all = [];
+  List<Invoice> _visible = [];
   bool _isLoaded = false;
   String? _userId;
   StreamSubscription<List<Invoice>>? _sub;
 
   Invoice? _draft;
 
-  List<Invoice> get invoices => _invoices;
+  /// Invoices the Facturen tab shows — everything outside the workshop buffer.
+  List<Invoice> get invoices => _visible;
+
+  /// Every invoice, buffer included. The Voertuigen tab needs this to find a
+  /// vehicle's invoice by id while it is still buffered.
+  List<Invoice> get allInvoices => _all;
+
   bool get isLoaded => _isLoaded;
   Invoice? get draft => _draft;
 
@@ -24,7 +36,8 @@ class InvoiceProvider extends ChangeNotifier {
     if (_userId == userId) return;
     _userId = userId;
     _sub?.cancel();
-    _invoices = [];
+    _all = [];
+    _visible = [];
     _isLoaded = false;
 
     if (userId == null) {
@@ -34,7 +47,9 @@ class InvoiceProvider extends ChangeNotifier {
 
     _sub = _firestore.invoicesStream(userId).listen(
       (invoices) {
-        _invoices = invoices;
+        _all = invoices;
+        _visible =
+            invoices.where((i) => i.status != workshopStatus).toList();
         _isLoaded = true;
         notifyListeners();
       },
@@ -152,7 +167,9 @@ class InvoiceProvider extends ChangeNotifier {
         productId: productId,
       );
 
-  Future<Invoice> saveDraft() async {
+  /// Saves the draft. [status] applies only to a newly created invoice — an
+  /// existing one keeps the status it already carries.
+  Future<Invoice> saveDraft({String status = 'concept'}) async {
     if (_userId == null || _draft == null) throw Exception('Geen concept of gebruiker');
 
     if (_draft!.id.isNotEmpty) {
@@ -163,9 +180,13 @@ class InvoiceProvider extends ChangeNotifier {
       return saved;
     }
 
-    final invoiceNumber = await _firestore.incrementAndGetInvoiceNumber(_userId!);
-    final prefix = _draft!.businessInvoicePrefix.isEmpty ? 'F' : _draft!.businessInvoicePrefix;
-    final formattedNumber = '$prefix-${invoiceNumber.toString().padLeft(4, '0')}';
+    // A workshop invoice does not take a number yet: it only becomes a real
+    // invoice — and consumes the next number — when the vehicle leaves the
+    // shop. Numbering it here would burn numbers on jobs that may sit in the
+    // buffer for days, leaving gaps in the Facturen tab's sequence.
+    final formattedNumber = status == workshopStatus
+        ? ''
+        : await _nextInvoiceNumber(_draft!.businessInvoicePrefix);
 
     final invoice = Invoice(
       id: '',
@@ -192,7 +213,7 @@ class InvoiceProvider extends ChangeNotifier {
       items: _draft!.items,
       notes: _draft!.notes,
       template: 'classic',
-      status: 'concept',
+      status: status,
       taxRate: _draft!.taxRate,
       currency: _draft!.currency,
       createdAt: DateTime.now(),
@@ -243,6 +264,30 @@ class InvoiceProvider extends ChangeNotifier {
   Future<void> deleteInvoice(String invoiceId) async {
     if (_userId == null) return;
     await _firestore.deleteInvoice(_userId!, invoiceId);
+  }
+
+  /// Formats and consumes the next invoice number for [prefix].
+  Future<String> _nextInvoiceNumber(String businessInvoicePrefix) async {
+    final number = await _firestore.incrementAndGetInvoiceNumber(_userId!);
+    final prefix =
+        businessInvoicePrefix.isEmpty ? 'F' : businessInvoicePrefix;
+    return '$prefix-${number.toString().padLeft(4, '0')}';
+  }
+
+  /// Releases a vehicle's invoice from the workshop buffer into the Facturen
+  /// tab, assigning its invoice number at that moment. Returns the numbered
+  /// invoice — callers that share it straight away need the new number.
+  Future<Invoice> releaseFromWorkshop(Invoice invoice) async {
+    if (_userId == null || invoice.status != workshopStatus) return invoice;
+
+    final released = invoice.copyWith(
+      status: 'concept',
+      invoiceNumber: invoice.invoiceNumber.isEmpty
+          ? await _nextInvoiceNumber(invoice.businessInvoicePrefix)
+          : invoice.invoiceNumber,
+    );
+    await _firestore.saveInvoice(_userId!, released);
+    return released;
   }
 
   Future<void> updateStatus(String invoiceId, String status) async {
