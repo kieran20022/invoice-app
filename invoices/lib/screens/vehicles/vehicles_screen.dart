@@ -47,8 +47,9 @@ class _VehiclesScreenState extends State<VehiclesScreen> {
                       invoice: _invoiceFor(invoices.allInvoices, vehicle),
                       onTap: () => _openInvoice(vehicle),
                       onShare: () => _shareInvoice(vehicle),
-                      onRemoveAndShare: () => _removeAndShare(vehicle),
-                      onRemove: () => _confirmRemove(vehicle),
+                      onFinish: () => _confirmFinish(vehicle),
+                      onFinishAndShare: () => _finishAndShare(vehicle),
+                      onDelete: () => _confirmDelete(vehicle),
                     );
                   },
                 ),
@@ -95,6 +96,7 @@ class _VehiclesScreenState extends State<VehiclesScreen> {
         vehicle.phone,
         vehicle.name,
         vehicle.plate,
+        vehicle.kmstand,
       );
       if (created == null || !mounted) return;
       await vehicleProvider.saveVehicle(vehicle.copyWith(invoiceId: created.id));
@@ -114,12 +116,13 @@ class _VehiclesScreenState extends State<VehiclesScreen> {
   }
 
   /// Creates and saves an empty invoice carrying the vehicle's phone number,
-  /// name and plate. It is saved into the workshop buffer, so it stays out of
-  /// the Facturen tab until the vehicle is taken out of the shop.
+  /// name, plate and km stand. It is saved into the workshop buffer, so it
+  /// stays out of the Facturen tab until the vehicle is taken out of the shop.
   Future<Invoice?> _createInvoiceFor(
     String phone,
     String name,
     String plate,
+    String kmstand,
   ) async {
     final invoiceProvider = context.read<InvoiceProvider>();
     final business = context.read<BusinessProvider>().businessInfo;
@@ -135,6 +138,7 @@ class _VehiclesScreenState extends State<VehiclesScreen> {
         telefoonnummer: phone,
         naam: name,
         kenteken: plate,
+        kmstand: kmstand,
         datum: DateFormat('dd-MM-yyyy').format(DateTime.now()),
       );
       return await invoiceProvider.saveDraft(
@@ -168,6 +172,7 @@ class _VehiclesScreenState extends State<VehiclesScreen> {
           phone: result.phone,
           name: result.name,
           plate: result.plate,
+          kmstand: result.kmstand,
         ),
       );
       return;
@@ -177,6 +182,7 @@ class _VehiclesScreenState extends State<VehiclesScreen> {
       result.phone,
       result.name,
       result.plate,
+      result.kmstand,
     );
     if (invoice == null) return;
     await vehicleProvider.saveVehicle(
@@ -185,6 +191,7 @@ class _VehiclesScreenState extends State<VehiclesScreen> {
         phone: result.phone,
         name: result.name,
         plate: result.plate,
+        kmstand: result.kmstand,
         invoiceId: invoice.id,
         createdAt: DateTime.now(),
       ),
@@ -234,10 +241,10 @@ class _VehiclesScreenState extends State<VehiclesScreen> {
     _snack('Bericht gekopieerd — plak het in WhatsApp');
   }
 
-  /// Takes the vehicle out of the shop and opens the share sheet straight
-  /// away: the invoice gets its number here, so what is shared is the real
-  /// invoice rather than the unnumbered concept.
-  Future<void> _removeAndShare(Vehicle vehicle) async {
+  /// Finishes the job and opens the share sheet straight away: the invoice
+  /// gets its number here, so what is shared is the real invoice rather than
+  /// the unnumbered concept.
+  Future<void> _finishAndShare(Vehicle vehicle) async {
     final invoiceProvider = context.read<InvoiceProvider>();
     final vehicleProvider = context.read<VehicleProvider>();
 
@@ -256,33 +263,21 @@ class _VehiclesScreenState extends State<VehiclesScreen> {
       if (!mounted) return;
       await _openShareSheet(released);
     } catch (e) {
-      _snack('Verwijderen en delen mislukt: $e');
+      _snack('Afronden en delen mislukt: $e');
     } finally {
       if (mounted) setState(() => _busy = false);
     }
   }
 
-  Future<void> _confirmRemove(Vehicle vehicle) async {
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Voertuig verwijderen'),
-        content: Text(
-          '${vehicle.plate} uit de werkplaats halen? '
-          'De factuur verschijnt dan in het Facturen tabblad.',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('Annuleren'),
-          ),
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            style: TextButton.styleFrom(foregroundColor: AppTheme.error),
-            child: const Text('Verwijderen'),
-          ),
-        ],
-      ),
+  /// Finishes the job: the invoice leaves the workshop buffer — getting its
+  /// number — and moves to the Facturen tab, and the vehicle leaves the shop.
+  Future<void> _confirmFinish(Vehicle vehicle) async {
+    final confirmed = await _confirm(
+      title: 'Voertuig afronden',
+      message:
+          '${vehicle.plate} afronden? De factuur krijgt een nummer en '
+          'verschijnt in het Facturen tabblad.',
+      action: 'Afronden',
     );
     if (confirmed != true || !mounted) return;
 
@@ -298,6 +293,60 @@ class _VehiclesScreenState extends State<VehiclesScreen> {
     }
     await vehicleProvider.deleteVehicle(vehicle.id);
     _snack('${vehicle.plate} staat nu in het Facturen tabblad');
+  }
+
+  /// Throws the whole record away — the vehicle *and* its invoice. Nothing
+  /// reaches the Facturen tab, and no invoice number is used.
+  Future<void> _confirmDelete(Vehicle vehicle) async {
+    final confirmed = await _confirm(
+      title: 'Voertuig verwijderen',
+      message:
+          '${vehicle.plate} en de bijbehorende factuur definitief '
+          'verwijderen? Dit kan niet ongedaan worden gemaakt.',
+      action: 'Verwijderen',
+      destructive: true,
+    );
+    if (confirmed != true || !mounted) return;
+
+    final invoiceProvider = context.read<InvoiceProvider>();
+    final vehicleProvider = context.read<VehicleProvider>();
+
+    // Delete the vehicle last: if the invoice delete fails, the vehicle is
+    // still there to reach it by.
+    final invoice = _invoiceFor(invoiceProvider.allInvoices, vehicle);
+    if (invoice != null) {
+      await invoiceProvider.deleteInvoice(invoice.id);
+    }
+    await vehicleProvider.deleteVehicle(vehicle.id);
+    _snack('${vehicle.plate} is verwijderd');
+  }
+
+  Future<bool?> _confirm({
+    required String title,
+    required String message,
+    required String action,
+    bool destructive = false,
+  }) {
+    return showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(title),
+        content: Text(message),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Annuleren'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            style: destructive
+                ? TextButton.styleFrom(foregroundColor: AppTheme.error)
+                : null,
+            child: Text(action),
+          ),
+        ],
+      ),
+    );
   }
 
   void _snack(String message) {
@@ -317,16 +366,18 @@ class _VehicleCard extends StatelessWidget {
   final Invoice? invoice;
   final VoidCallback onTap;
   final VoidCallback onShare;
-  final VoidCallback onRemoveAndShare;
-  final VoidCallback onRemove;
+  final VoidCallback onFinish;
+  final VoidCallback onFinishAndShare;
+  final VoidCallback onDelete;
 
   const _VehicleCard({
     required this.vehicle,
     required this.invoice,
     required this.onTap,
     required this.onShare,
-    required this.onRemoveAndShare,
-    required this.onRemove,
+    required this.onFinish,
+    required this.onFinishAndShare,
+    required this.onDelete,
   });
 
   @override
@@ -405,19 +456,21 @@ class _VehicleCard extends StatelessWidget {
                 ),
                 onSelected: (value) {
                   if (value == 'share') onShare();
-                  if (value == 'remove_share') onRemoveAndShare();
-                  if (value == 'remove') onRemove();
+                  if (value == 'finish') onFinish();
+                  if (value == 'finish_share') onFinishAndShare();
+                  if (value == 'delete') onDelete();
                 },
                 itemBuilder: (_) => const [
                   PopupMenuItem(value: 'share', child: Text('Concept delen')),
+                  PopupMenuItem(value: 'finish', child: Text('Afronden')),
                   PopupMenuItem(
-                    value: 'remove_share',
-                    child: Text('Verwijderen en delen'),
+                    value: 'finish_share',
+                    child: Text('Afronden en delen'),
                   ),
                   PopupMenuItem(
-                    value: 'remove',
+                    value: 'delete',
                     child: Text(
-                      'Uit werkplaats halen',
+                      'Verwijderen',
                       style: TextStyle(color: AppTheme.error),
                     ),
                   ),
@@ -464,7 +517,8 @@ class _VehicleFormResult {
   final String phone;
   final String name;
   final String plate;
-  const _VehicleFormResult(this.phone, this.name, this.plate);
+  final String kmstand;
+  const _VehicleFormResult(this.phone, this.name, this.plate, this.kmstand);
 }
 
 class _VehicleFormSheet extends StatefulWidget {
@@ -478,12 +532,14 @@ class _VehicleFormSheet extends StatefulWidget {
 class _VehicleFormSheetState extends State<_VehicleFormSheet> {
   final _formKey = GlobalKey<FormState>();
   final _phone = TextEditingController();
-  final _name = TextEditingController();
   final _plate = TextEditingController();
+  final _kmstand = TextEditingController();
+  final _name = TextEditingController();
 
   // Enter walks the fields in order and submits from the last one.
-  final _nameFocus = FocusNode();
   final _plateFocus = FocusNode();
+  final _kmstandFocus = FocusNode();
+  final _nameFocus = FocusNode();
 
   @override
   void initState() {
@@ -491,18 +547,21 @@ class _VehicleFormSheetState extends State<_VehicleFormSheet> {
     final v = widget.vehicle;
     if (v != null) {
       _phone.text = PhonePairFormatter.format(v.phone);
-      _name.text = v.name;
       _plate.text = v.plate;
+      _kmstand.text = v.kmstand;
+      _name.text = v.name;
     }
   }
 
   @override
   void dispose() {
     _phone.dispose();
-    _name.dispose();
     _plate.dispose();
-    _nameFocus.dispose();
+    _kmstand.dispose();
+    _name.dispose();
     _plateFocus.dispose();
+    _kmstandFocus.dispose();
+    _nameFocus.dispose();
     super.dispose();
   }
 
@@ -515,6 +574,7 @@ class _VehicleFormSheetState extends State<_VehicleFormSheet> {
         _phone.text.replaceAll(' ', '').trim(),
         _name.text.trim(),
         _plate.text.trim().toUpperCase(),
+        _kmstand.text.trim(),
       ),
     );
   }
@@ -568,18 +628,6 @@ class _VehicleFormSheetState extends State<_VehicleFormSheet> {
                     ? 'Geen geldig telefoonnummer'
                     : null;
               },
-              onFieldSubmitted: (_) => _nameFocus.requestFocus(),
-            ),
-            const SizedBox(height: 12),
-            TextFormField(
-              controller: _name,
-              focusNode: _nameFocus,
-              textCapitalization: TextCapitalization.words,
-              textInputAction: TextInputAction.next,
-              decoration: const InputDecoration(
-                labelText: 'Naam eigenaar (optioneel)',
-                prefixIcon: Icon(Icons.person_outline),
-              ),
               onFieldSubmitted: (_) => _plateFocus.requestFocus(),
             ),
             const SizedBox(height: 12),
@@ -587,13 +635,37 @@ class _VehicleFormSheetState extends State<_VehicleFormSheet> {
               controller: _plate,
               focusNode: _plateFocus,
               textCapitalization: TextCapitalization.characters,
-              textInputAction: TextInputAction.done,
+              textInputAction: TextInputAction.next,
               decoration: const InputDecoration(
                 labelText: 'Kenteken',
                 prefixIcon: Icon(Icons.confirmation_number_outlined),
               ),
               validator: (v) =>
                   (v == null || v.trim().isEmpty) ? 'Vul een kenteken in' : null,
+              onFieldSubmitted: (_) => _kmstandFocus.requestFocus(),
+            ),
+            const SizedBox(height: 12),
+            TextFormField(
+              controller: _kmstand,
+              focusNode: _kmstandFocus,
+              keyboardType: TextInputType.number,
+              textInputAction: TextInputAction.next,
+              decoration: const InputDecoration(
+                labelText: 'KM stand (optioneel)',
+                prefixIcon: Icon(Icons.speed_outlined),
+              ),
+              onFieldSubmitted: (_) => _nameFocus.requestFocus(),
+            ),
+            const SizedBox(height: 12),
+            TextFormField(
+              controller: _name,
+              focusNode: _nameFocus,
+              textCapitalization: TextCapitalization.words,
+              textInputAction: TextInputAction.done,
+              decoration: const InputDecoration(
+                labelText: 'Naam eigenaar (optioneel)',
+                prefixIcon: Icon(Icons.person_outline),
+              ),
               onFieldSubmitted: (_) => _submit(),
             ),
             const SizedBox(height: 20),

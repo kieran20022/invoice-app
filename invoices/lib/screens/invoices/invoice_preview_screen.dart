@@ -62,14 +62,7 @@ class _InvoicePreviewScreenState extends State<InvoicePreviewScreen> {
             padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
             child: Row(
               children: [
-                _MetaChip(
-                  label: _invoice.clientKenteken.isNotEmpty
-                      ? '${_invoice.clientNaam} · ${_invoice.clientKenteken}'
-                      : _invoice.clientProductType.isNotEmpty
-                      ? '${_invoice.clientNaam} · ${_invoice.clientProductType}'
-                      : _invoice.clientNaam,
-                  icon: Icons.moped_outlined,
-                ),
+                _MetaChip(label: _clientLabel, icon: Icons.moped_outlined),
                 const Spacer(),
                 _StatusBadge(status: _invoice.status),
               ],
@@ -112,9 +105,15 @@ class _InvoicePreviewScreenState extends State<InvoicePreviewScreen> {
             ),
           ),
 
-          // Actions
+          // Actions — pad for the system navigation bar (3-button nav is
+          // taller than gesture nav, and would otherwise cover the buttons).
           Container(
-            padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
+            padding: EdgeInsets.fromLTRB(
+              16,
+              12,
+              16,
+              12 + MediaQuery.of(context).viewPadding.bottom,
+            ),
             decoration: BoxDecoration(
               color: AppTheme.surf(context),
               border: Border(top: BorderSide(color: AppTheme.borderOf(context))),
@@ -151,6 +150,18 @@ class _InvoicePreviewScreenState extends State<InvoicePreviewScreen> {
         ],
       ),
     );
+  }
+
+  /// Name and vehicle reference, joined by a dot. The name is optional — with
+  /// none, the kenteken (or product type) stands on its own rather than
+  /// hanging off an empty leading dot.
+  String get _clientLabel {
+    final ref = _invoice.clientKenteken.isNotEmpty
+        ? _invoice.clientKenteken
+        : _invoice.clientProductType;
+    if (_invoice.clientNaam.isEmpty) return ref;
+    if (ref.isEmpty) return _invoice.clientNaam;
+    return '${_invoice.clientNaam} · $ref';
   }
 
   Future<void> _editInvoice() async {

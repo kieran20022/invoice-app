@@ -13,6 +13,10 @@ class Vehicle {
   /// Licence plate — mirrors the invoice's `clientKenteken`.
   final String plate;
 
+  /// Odometer reading as typed — optional, mirrors the invoice's
+  /// `clientKmstand`. Empty when it was not filled in.
+  final String kmstand;
+
   /// The invoice this vehicle's work is billed on. Tapping the vehicle opens
   /// it straight at the Producten step.
   final String invoiceId;
@@ -24,6 +28,7 @@ class Vehicle {
     required this.phone,
     this.name = '',
     required this.plate,
+    this.kmstand = '',
     required this.invoiceId,
     required this.createdAt,
   });
@@ -32,6 +37,7 @@ class Vehicle {
         'phone': phone,
         'name': name,
         'plate': plate,
+        'kmstand': kmstand,
         'invoiceId': invoiceId,
         'createdAt': createdAt.toIso8601String(),
       };
@@ -43,6 +49,7 @@ class Vehicle {
         // number became the primary field.
         name: map['name'] ?? map['ownerName'] ?? '',
         plate: map['plate'] ?? '',
+        kmstand: map['kmstand'] ?? '',
         invoiceId: map['invoiceId'] ?? '',
         createdAt:
             DateTime.tryParse(map['createdAt'] ?? '') ?? DateTime.now(),
@@ -52,6 +59,7 @@ class Vehicle {
     String? phone,
     String? name,
     String? plate,
+    String? kmstand,
     String? invoiceId,
   }) =>
       Vehicle(
@@ -59,6 +67,7 @@ class Vehicle {
         phone: phone ?? this.phone,
         name: name ?? this.name,
         plate: plate ?? this.plate,
+        kmstand: kmstand ?? this.kmstand,
         invoiceId: invoiceId ?? this.invoiceId,
         createdAt: createdAt,
       );

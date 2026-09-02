@@ -598,7 +598,7 @@ class _ClientStepState extends State<_ClientStep> {
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) _naamFocus.requestFocus();
+      if (mounted) _telefoonnummerFocus.requestFocus();
     });
   }
 
@@ -620,12 +620,12 @@ class _ClientStepState extends State<_ClientStep> {
       child: Column(
         children: [
           _tf(
-            widget.naam,
-            'Naam *',
+            widget.telefoonnummer,
+            'Telefoonnummer *',
             required: true,
-            focusNode: _naamFocus,
+            type: TextInputType.phone,
+            focusNode: _telefoonnummerFocus,
             nextFocus: _kenterkenFocus,
-            caps: Caps.words,
           ),
           const SizedBox(height: 12),
           AnimatedBuilder(
@@ -665,7 +665,15 @@ class _ClientStepState extends State<_ClientStep> {
             required: false,
             type: TextInputType.number,
             focusNode: _kmstandFocus,
+            nextFocus: _naamFocus,
+          ),
+          const SizedBox(height: 12),
+          _tf(
+            widget.naam,
+            'Naam (optioneel)',
+            focusNode: _naamFocus,
             nextFocus: _adresFocus,
+            caps: Caps.words,
           ),
           const SizedBox(height: 12),
           GestureDetector(
@@ -695,15 +703,7 @@ class _ClientStepState extends State<_ClientStep> {
             widget.adres,
             'Adres (optioneel)',
             focusNode: _adresFocus,
-            nextFocus: _telefoonnummerFocus,
             caps: Caps.first,
-          ),
-          const SizedBox(height: 12),
-          _tf(
-            widget.telefoonnummer,
-            'Telefoonnummer (optioneel)',
-            type: TextInputType.phone,
-            focusNode: _telefoonnummerFocus,
           ),
         ],
       ),
