@@ -3,7 +3,9 @@ import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 import '../../config/theme.dart';
 import '../../models/invoice.dart';
+import '../../providers/business_provider.dart';
 import '../../providers/invoice_provider.dart';
+import '../../utils/price.dart';
 import 'invoice_preview_screen.dart';
 import 'invoice_stats_screen.dart';
 
@@ -21,8 +23,16 @@ class _InvoiceHistoryScreenState extends State<InvoiceHistoryScreen> {
   @override
   Widget build(BuildContext context) {
     final provider = context.watch<InvoiceProvider>();
+    // Quotes are not invoices: they carry no payment state, so the status
+    // filters skip them and the revenue stats leave them out.
+    final facturen = provider.invoices.where((i) => !i.isQuote).toList();
+
     final invoices = provider.invoices.where((inv) {
-      if (_filter != 'alle' && inv.status != _filter) return false;
+      if (_filter == 'offerte') {
+        if (!inv.isQuote) return false;
+      } else if (_filter != 'alle') {
+        if (inv.isQuote || inv.status != _filter) return false;
+      }
       if (_search.isNotEmpty) {
         final q = _search.toLowerCase();
         return inv.invoiceNumber.toLowerCase().contains(q) ||
@@ -88,6 +98,12 @@ class _InvoiceHistoryScreenState extends State<InvoiceHistoryScreen> {
                         _filter,
                         () => setState(() => _filter = 'betaald'),
                       ),
+                      _FilterChip(
+                        'offerte',
+                        'Offertes',
+                        _filter,
+                        () => setState(() => _filter = 'offerte'),
+                      ),
                     ],
                   ),
                 ),
@@ -110,7 +126,7 @@ class _InvoiceHistoryScreenState extends State<InvoiceHistoryScreen> {
                 ),
                 const SizedBox(height: 8),
                 _StatsRow(
-                  invoices: provider.invoices
+                  invoices: facturen
                       .where((inv) =>
                           inv.issueDate.year == DateTime.now().year &&
                           inv.issueDate.month == DateTime.now().month)
@@ -118,7 +134,7 @@ class _InvoiceHistoryScreenState extends State<InvoiceHistoryScreen> {
                   onTap: () => Navigator.of(context).push(
                     MaterialPageRoute(
                       builder: (_) => InvoiceStatsScreen(
-                        allInvoices: provider.invoices,
+                        allInvoices: facturen,
                       ),
                     ),
                   ),
@@ -169,18 +185,22 @@ class _InvoiceHistoryScreenState extends State<InvoiceHistoryScreen> {
                           color: Theme.of(context).cardColor,
                           child: Dismissible(
                             key: ValueKey(invoice.id),
-                            background: Container(
-                              alignment: Alignment.centerLeft,
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 20,
-                              ),
-                              color: Color(0xFF10B981),
-                              child: const Icon(
-                                Icons.payments_rounded,
-                                color: Colors.white,
-                                size: 28,
-                              ),
-                            ),
+                            // Swiping right marks paid, which a quote cannot
+                            // be — so it gets no such affordance.
+                            background: invoice.isQuote
+                                ? const SizedBox.shrink()
+                                : Container(
+                                    alignment: Alignment.centerLeft,
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 20,
+                                    ),
+                                    color: const Color(0xFF10B981),
+                                    child: const Icon(
+                                      Icons.payments_rounded,
+                                      color: Colors.white,
+                                      size: 28,
+                                    ),
+                                  ),
                             secondaryBackground: Container(
                               alignment: Alignment.centerRight,
                               padding: const EdgeInsets.symmetric(
@@ -195,7 +215,11 @@ class _InvoiceHistoryScreenState extends State<InvoiceHistoryScreen> {
                             ),
                             confirmDismiss: (direction) async {
                               if (direction == DismissDirection.startToEnd) {
-                                if (invoice.status == 'betaald') return false;
+                                // A quote is not owed, so it cannot be paid.
+                                if (invoice.isQuote ||
+                                    invoice.status == 'betaald') {
+                                  return false;
+                                }
                                 await context
                                     .read<InvoiceProvider>()
                                     .updateStatus(invoice.id, 'betaald');
@@ -204,8 +228,8 @@ class _InvoiceHistoryScreenState extends State<InvoiceHistoryScreen> {
                                 return await showDialog<bool>(
                                       context: context,
                                       builder: (ctx) => AlertDialog(
-                                        title: const Text(
-                                          'Factuur verwijderen',
+                                        title: Text(
+                                          '${invoice.documentLabel} verwijderen',
                                         ),
                                         content: Text(
                                           'Wil je ${invoice.invoiceNumber} verwijderen? Dit kan niet ongedaan worden gemaakt.',
@@ -393,7 +417,10 @@ class _InvoiceCard extends StatelessWidget {
                         ),
                       ),
                       const SizedBox(width: 8),
-                      _TappableStatusBadge(invoice: invoice),
+                      if (invoice.isQuote)
+                        _QuoteBadge(invoice: invoice)
+                      else
+                        _TappableStatusBadge(invoice: invoice),
                     ],
                   ),
                   const SizedBox(height: 2),
@@ -424,7 +451,11 @@ class _InvoiceCard extends StatelessWidget {
               ),
             ),
             Text(
-              '${invoice.currency}${invoice.totaalInclBtw.toStringAsFixed(2)}',
+              formatAmountRange(
+                invoice.totaalInclBtw,
+                invoice.totaalInclBtwMax,
+                invoice.currency,
+              ),
               style: TextStyle(
                 fontWeight: FontWeight.w700,
                 fontSize: 15,
@@ -523,6 +554,235 @@ class _TappableStatusBadge extends StatelessWidget {
   }
 }
 
+/// A quote has no payment state to toggle, so its badge names the document and
+/// offers the one transition it does have: becoming an invoice.
+class _QuoteBadge extends StatelessWidget {
+  final Invoice invoice;
+  const _QuoteBadge({required this.invoice});
+
+  @override
+  Widget build(BuildContext context) {
+    return PopupMenuButton<String>(
+      onSelected: (_) => convertQuoteToInvoice(context, invoice),
+      itemBuilder: (_) => const [
+        PopupMenuItem(value: 'factuur', child: Text('Omzetten naar factuur')),
+      ],
+      padding: EdgeInsets.zero,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+        decoration: BoxDecoration(
+          color: AppTheme.primary.withAlpha(26),
+          borderRadius: BorderRadius.circular(4),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              invoice.shortDocumentLabel,
+              style: const TextStyle(
+                color: AppTheme.primary,
+                fontWeight: FontWeight.w600,
+                fontSize: 10,
+              ),
+            ),
+            const Icon(
+              Icons.arrow_drop_down,
+              size: 12,
+              color: AppTheme.primary,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Turns [quote] into an invoice, first settling every estimated range: an
+/// invoice bills an exact quantity, so "1-4 uur" has to become a number the
+/// customer is actually charged for.
+Future<void> convertQuoteToInvoice(BuildContext context, Invoice quote) async {
+  final ranged = quote.items.where((i) => i.isRange).toList();
+
+  Map<String, double>? quantities = const {};
+  if (ranged.isNotEmpty) {
+    quantities = await showModalBottomSheet<Map<String, double>>(
+      context: context,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (_) => _SettleRangesSheet(quote: quote, ranged: ranged),
+    );
+  } else {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Omzetten naar factuur'),
+        content: Text(
+          '${quote.documentLabel} ${quote.numberLabel} wordt een factuur en '
+          'krijgt het eerstvolgende factuurnummer.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Annuleren'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Omzetten'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) quantities = null;
+  }
+
+  if (quantities == null || !context.mounted) return;
+
+  final prefix =
+      context.read<BusinessProvider>().businessInfo?.invoicePrefix ?? 'F';
+  try {
+    final invoice = await context.read<InvoiceProvider>().convertToInvoice(
+      quote,
+      invoicePrefix: prefix,
+      quantities: quantities,
+    );
+    if (!context.mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('Omgezet naar factuur ${invoice.invoiceNumber}'),
+        behavior: SnackBarBehavior.floating,
+      ),
+    );
+  } catch (e) {
+    if (!context.mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('Omzetten mislukt: $e'),
+        behavior: SnackBarBehavior.floating,
+        backgroundColor: AppTheme.error,
+      ),
+    );
+  }
+}
+
+/// Asks for the settled quantity of every estimated item. Each field starts at
+/// the low end of its range and has to stay inside it — that span is what the
+/// customer was quoted.
+class _SettleRangesSheet extends StatefulWidget {
+  final Invoice quote;
+  final List<InvoiceItem> ranged;
+  const _SettleRangesSheet({required this.quote, required this.ranged});
+
+  @override
+  State<_SettleRangesSheet> createState() => _SettleRangesSheetState();
+}
+
+class _SettleRangesSheetState extends State<_SettleRangesSheet> {
+  final _formKey = GlobalKey<FormState>();
+  late final Map<String, TextEditingController> _controllers = {
+    for (final item in widget.ranged)
+      item.id: TextEditingController(text: formatPriceInput(item.aantal)),
+  };
+
+  @override
+  void dispose() {
+    for (final c in _controllers.values) {
+      c.dispose();
+    }
+    super.dispose();
+  }
+
+  void _submit() {
+    if (!_formKey.currentState!.validate()) return;
+    Navigator.pop(context, {
+      for (final entry in _controllers.entries)
+        entry.key: double.parse(entry.value.text),
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: EdgeInsets.only(
+        left: 20,
+        right: 20,
+        top: 20,
+        bottom: MediaQuery.of(context).viewInsets.bottom + 20,
+      ),
+      child: SingleChildScrollView(
+        child: Form(
+          key: _formKey,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Row(
+                children: [
+                  const Expanded(
+                    child: Text(
+                      'Aantallen vastleggen',
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.close),
+                    onPressed: () => Navigator.pop(context),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 4),
+              Text(
+                'Een factuur rekent een vast aantal. Kies per geschat product '
+                'het aantal dat je in rekening brengt.',
+                style: TextStyle(
+                  fontSize: 13,
+                  color: AppTheme.onSurfaceVariant(context),
+                ),
+              ),
+              const SizedBox(height: 16),
+              ...widget.ranged.map(
+                (item) => Padding(
+                  padding: const EdgeInsets.only(bottom: 12),
+                  child: TextFormField(
+                    controller: _controllers[item.id],
+                    keyboardType: const TextInputType.numberWithOptions(
+                      decimal: true,
+                    ),
+                    decoration: InputDecoration(
+                      labelText: item.omschrijving,
+                      helperText: 'Geschat: ${item.aantalLabel}',
+                      suffixText:
+                          '${widget.quote.currency}'
+                          '${item.prijsExBtw.toStringAsFixed(2)} p/st',
+                    ),
+                    validator: (v) {
+                      final value = double.tryParse(v ?? '');
+                      if (value == null) return 'Ongeldig';
+                      if (value < item.aantal || value > item.aantalMax) {
+                        return 'Kies tussen ${item.aantalLabel}';
+                      }
+                      return null;
+                    },
+                  ),
+                ),
+              ),
+              const SizedBox(height: 4),
+              ElevatedButton(
+                onPressed: _submit,
+                child: const Text('Omzetten naar factuur'),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 class _EmptyState extends StatelessWidget {
   final String filter, search;
   const _EmptyState({required this.filter, required this.search});
@@ -543,7 +803,9 @@ class _EmptyState extends StatelessWidget {
             ),
             const SizedBox(height: 16),
             Text(
-              isFiltered ? 'Geen overeenkomende facturen' : 'Nog geen facturen',
+              isFiltered
+                  ? 'Geen overeenkomende documenten'
+                  : 'Nog geen facturen',
               style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
             ),
             const SizedBox(height: 8),

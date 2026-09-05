@@ -19,3 +19,12 @@ String formatPriceInput(double value) {
   }
   return s;
 }
+
+/// Formats an amount for display, as a span when [max] is above [min]. A quote
+/// whose items are estimated ("1-4 uur") totals to a range rather than a
+/// single number.
+String formatAmountRange(double min, double max, String currency) {
+  final low = '$currency${min.toStringAsFixed(2)}';
+  if (max <= min) return low;
+  return '$low - $currency${max.toStringAsFixed(2)}';
+}

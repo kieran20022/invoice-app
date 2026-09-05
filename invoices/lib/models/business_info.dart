@@ -12,9 +12,14 @@ class BusinessInfo {
   final String website;
   final String? logoBase64;
   final int nextInvoiceNumber;
+
+  /// Quotes run their own sequence, so an offerte never consumes an invoice
+  /// number and leaves a gap in the Facturen tab.
+  final int nextQuoteNumber;
   final String currency;
   final double defaultTaxRate;
   final String invoicePrefix;
+  final String quotePrefix;
   final String? defaultNotes;
   final String emailTemplate;
   final List<String> favoriteCategories;
@@ -39,9 +44,11 @@ class BusinessInfo {
     this.website = '',
     this.logoBase64,
     this.nextInvoiceNumber = 1,
+    this.nextQuoteNumber = 1,
     this.currency = '€',
     this.defaultTaxRate = 21.0,
     this.invoicePrefix = 'F',
+    this.quotePrefix = 'OFF',
     this.defaultNotes,
     this.emailTemplate = kDefaultEmailTemplate,
     this.favoriteCategories = const [],
@@ -78,9 +85,11 @@ class BusinessInfo {
         'website': website,
         'logoBase64': logoBase64,
         'nextInvoiceNumber': nextInvoiceNumber,
+        'nextQuoteNumber': nextQuoteNumber,
         'currency': currency,
         'defaultTaxRate': defaultTaxRate,
         'invoicePrefix': invoicePrefix,
+        'quotePrefix': quotePrefix,
         'defaultNotes': defaultNotes,
         'emailTemplate': emailTemplate,
         'favoriteCategories': favoriteCategories,
@@ -103,9 +112,11 @@ class BusinessInfo {
         website: map['website'] ?? '',
         logoBase64: map['logoBase64'],
         nextInvoiceNumber: map['nextInvoiceNumber'] ?? 1,
+        nextQuoteNumber: map['nextQuoteNumber'] ?? 1,
         currency: map['currency'] ?? '€',
         defaultTaxRate: (map['defaultTaxRate'] ?? 21.0).toDouble(),
         invoicePrefix: map['invoicePrefix'] ?? 'F',
+        quotePrefix: map['quotePrefix'] ?? 'OFF',
         defaultNotes: map['defaultNotes'],
         emailTemplate: map['emailTemplate'] ?? kDefaultEmailTemplate,
         favoriteCategories: List<String>.from(map['favoriteCategories'] ?? []),
@@ -128,9 +139,11 @@ class BusinessInfo {
     String? logoBase64,
     bool clearLogo = false,
     int? nextInvoiceNumber,
+    int? nextQuoteNumber,
     String? currency,
     double? defaultTaxRate,
     String? invoicePrefix,
+    String? quotePrefix,
     String? defaultNotes,
     String? emailTemplate,
     List<String>? favoriteCategories,
@@ -152,9 +165,11 @@ class BusinessInfo {
         website: website ?? this.website,
         logoBase64: clearLogo ? null : (logoBase64 ?? this.logoBase64),
         nextInvoiceNumber: nextInvoiceNumber ?? this.nextInvoiceNumber,
+        nextQuoteNumber: nextQuoteNumber ?? this.nextQuoteNumber,
         currency: currency ?? this.currency,
         defaultTaxRate: defaultTaxRate ?? this.defaultTaxRate,
         invoicePrefix: invoicePrefix ?? this.invoicePrefix,
+        quotePrefix: quotePrefix ?? this.quotePrefix,
         defaultNotes: defaultNotes ?? this.defaultNotes,
         emailTemplate: emailTemplate ?? this.emailTemplate,
         favoriteCategories: favoriteCategories ?? this.favoriteCategories,

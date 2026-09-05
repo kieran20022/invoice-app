@@ -78,18 +78,36 @@ class _HomeScreenState extends State<HomeScreen> {
       ),
       body: IndexedStack(index: _currentIndex, children: _screens),
       floatingActionButton: _currentIndex == 0
-          ? FloatingActionButton.extended(
-              heroTag: 'home_new_invoice',
-              onPressed: _openCreateInvoice,
-              backgroundColor: AppTheme.primary,
-              icon: const Icon(Icons.add, color: Colors.white),
-              label: const Text(
-                'Nieuwe Factuur',
-                style: TextStyle(
-                  color: Colors.white,
-                  fontWeight: FontWeight.w600,
+          ? Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                FloatingActionButton.extended(
+                  heroTag: 'home_new_quote',
+                  onPressed: () => _openCreateInvoice(isQuote: true),
+                  backgroundColor: AppTheme.surf(context),
+                  foregroundColor: AppTheme.primary,
+                  icon: const Icon(Icons.request_quote_outlined),
+                  label: const Text(
+                    'Offerte Maken',
+                    style: TextStyle(fontWeight: FontWeight.w600),
+                  ),
                 ),
-              ),
+                const SizedBox(height: 10),
+                FloatingActionButton.extended(
+                  heroTag: 'home_new_invoice',
+                  onPressed: _openCreateInvoice,
+                  backgroundColor: AppTheme.primary,
+                  icon: const Icon(Icons.add, color: Colors.white),
+                  label: const Text(
+                    'Nieuwe Factuur',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+              ],
             )
           : null,
       bottomNavigationBar: Container(
@@ -124,10 +142,12 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  void _openCreateInvoice() {
-    Navigator.of(
-      context,
-    ).push(MaterialPageRoute(builder: (_) => const CreateInvoiceScreen()));
+  void _openCreateInvoice({bool isQuote = false}) {
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => CreateInvoiceScreen(isQuote: isQuote),
+      ),
+    );
   }
 
   void _showProfileMenu() {

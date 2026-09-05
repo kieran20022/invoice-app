@@ -29,6 +29,7 @@ class _BusinessInfoScreenState extends State<BusinessInfoScreen> {
   late final TextEditingController _currency;
   late final TextEditingController _taxRate;
   late final TextEditingController _invoicePrefix;
+  late final TextEditingController _quotePrefix;
   late final TextEditingController _notes;
   late final TextEditingController _startingNumber;
   late final TextEditingController _emailTemplate;
@@ -52,6 +53,7 @@ class _BusinessInfoScreenState extends State<BusinessInfoScreen> {
     _currency = TextEditingController(text: '€');
     _taxRate = TextEditingController(text: '21');
     _invoicePrefix = TextEditingController(text: 'F');
+    _quotePrefix = TextEditingController(text: 'OFF');
     _notes = TextEditingController();
     _startingNumber = TextEditingController(text: '1');
     _emailTemplate = TextEditingController(
@@ -75,6 +77,7 @@ class _BusinessInfoScreenState extends State<BusinessInfoScreen> {
       _currency,
       _taxRate,
       _invoicePrefix,
+      _quotePrefix,
       _notes,
       _startingNumber,
       _emailTemplate,
@@ -100,6 +103,7 @@ class _BusinessInfoScreenState extends State<BusinessInfoScreen> {
     _currency.text = info.currency;
     _taxRate.text = info.defaultTaxRate.toString();
     _invoicePrefix.text = info.invoicePrefix;
+    _quotePrefix.text = info.quotePrefix;
     _notes.text = info.defaultNotes ?? '';
     _startingNumber.text = info.nextInvoiceNumber.toString();
     _emailTemplate.text = info.emailTemplate;
@@ -131,6 +135,12 @@ class _BusinessInfoScreenState extends State<BusinessInfoScreen> {
       invoicePrefix: _invoicePrefix.text.trim().isEmpty
           ? 'F'
           : _invoicePrefix.text.trim(),
+      quotePrefix: _quotePrefix.text.trim().isEmpty
+          ? 'OFF'
+          : _quotePrefix.text.trim(),
+      // Quotes count in their own sequence, which the invoice settings do not
+      // touch.
+      nextQuoteNumber: existing?.nextQuoteNumber ?? 1,
       defaultNotes: _notes.text.trim().isEmpty ? null : _notes.text.trim(),
       nextInvoiceNumber: int.tryParse(_startingNumber.text) ?? 1,
       emailTemplate: _emailTemplate.text.trim().isEmpty
@@ -328,6 +338,7 @@ class _BusinessInfoScreenState extends State<BusinessInfoScreen> {
                 ),
               ],
             ),
+            _field(_quotePrefix, 'Offertenummer prefix', hint: 'OFF'),
             _field(
               _notes,
               'Standaard opmerkingen',

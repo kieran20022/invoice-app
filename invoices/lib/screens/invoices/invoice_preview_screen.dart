@@ -40,7 +40,8 @@ class _InvoicePreviewScreenState extends State<InvoicePreviewScreen> {
             icon: const Icon(Icons.more_vert),
             onSelected: _handleMenu,
             itemBuilder: (_) => [
-              if (_invoice.status != 'betaald')
+              // A quote is not owed yet, so there is nothing to mark paid.
+              if (!_invoice.isQuote && _invoice.status != 'betaald')
                 const PopupMenuItem(
                   value: 'betaald',
                   child: Text('Markeer als betaald'),
@@ -64,7 +65,16 @@ class _InvoicePreviewScreenState extends State<InvoicePreviewScreen> {
               children: [
                 _MetaChip(label: _clientLabel, icon: Icons.moped_outlined),
                 const Spacer(),
-                _StatusBadge(status: _invoice.status),
+                // A quote shows what kind of document it is; only an invoice
+                // has a payment state to report.
+                _StatusBadge(
+                  status: _invoice.isQuote
+                      ? _invoice.documentLabel
+                      : _invoice.status,
+                  color: _invoice.isQuote
+                      ? AppTheme.primary
+                      : _statusColor(_invoice.status),
+                ),
               ],
             ),
           ),
@@ -235,7 +245,7 @@ class _InvoicePreviewScreenState extends State<InvoicePreviewScreen> {
       final confirm = await showDialog<bool>(
         context: context,
         builder: (ctx) => AlertDialog(
-          title: const Text('Factuur verwijderen'),
+          title: Text('${_invoice.documentLabel} verwijderen'),
           content: Text(
             'Verwijder ${_invoice.invoiceNumber}? Dit kan niet ongedaan worden gemaakt.',
           ),
@@ -294,20 +304,18 @@ class _MetaChip extends StatelessWidget {
   );
 }
 
+Color _statusColor(String status) => switch (status) {
+  'betaald' => const Color(0xFF10B981),
+  _ => AppTheme.textSecondary,
+};
+
 class _StatusBadge extends StatelessWidget {
   final String status;
-  const _StatusBadge({required this.status});
+  final Color color;
+  const _StatusBadge({required this.status, required this.color});
 
   @override
   Widget build(BuildContext context) {
-    Color color;
-    switch (status) {
-      case 'betaald':
-        color = const Color(0xFF10B981);
-        break;
-      default:
-        color = AppTheme.textSecondary;
-    }
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
       decoration: BoxDecoration(

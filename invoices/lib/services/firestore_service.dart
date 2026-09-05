@@ -68,14 +68,21 @@ class FirestoreService {
         .set({'logoBase64': logoBase64}, SetOptions(merge: true));
   }
 
-  Future<int> incrementAndGetInvoiceNumber(String userId) async {
+  Future<int> incrementAndGetInvoiceNumber(String userId) =>
+      _incrementCounter(userId, 'nextInvoiceNumber');
+
+  /// Quotes count in their own sequence, separate from the invoice numbers.
+  Future<int> incrementAndGetQuoteNumber(String userId) =>
+      _incrementCounter(userId, 'nextQuoteNumber');
+
+  Future<int> _incrementCounter(String userId, String field) async {
     final ref = _db.collection('users').doc(userId).collection('settings').doc('business');
     int nextNumber = 1;
     await _db.runTransaction((tx) async {
       final doc = await tx.get(ref);
       if (doc.exists) {
-        nextNumber = (doc.data()?['nextInvoiceNumber'] ?? 1) as int;
-        tx.update(ref, {'nextInvoiceNumber': nextNumber + 1});
+        nextNumber = (doc.data()?[field] ?? 1) as int;
+        tx.update(ref, {field: nextNumber + 1});
       }
     });
     return nextNumber;

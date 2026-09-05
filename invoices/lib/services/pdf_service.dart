@@ -11,6 +11,7 @@ const _kBorder = PdfColor(0.820, 0.835, 0.859);
 const _kBgLight = PdfColor(0.949, 0.953, 0.965);
 const _kPaid = PdfColor(0.063, 0.725, 0.506); // #10B981
 const _kUnpaid = PdfColor(0.937, 0.267, 0.267); // #EF4444
+const _kQuote = PdfColor(0.146, 0.388, 0.922); // #2563EB
 
 class PdfService {
   static Future<pw.ThemeData> _theme() async {
@@ -27,6 +28,10 @@ class PdfService {
       );
 
   static String _date(DateTime d) => DateFormat('dd-MM-yyyy').format(d);
+
+  /// A total as a span when the document estimates ranges, otherwise plain.
+  static String _fmtRange(Invoice inv, double min, double max) =>
+      max > min ? '${_fmt(inv, min)} - ${_fmt(inv, max)}' : _fmt(inv, min);
 
   static Future<Uint8List> generatePdf(
     Invoice invoice, {
@@ -98,7 +103,7 @@ class PdfService {
                 crossAxisAlignment: pw.CrossAxisAlignment.end,
                 children: [
                   pw.Text(
-                    'FACTUUR',
+                    invoice.documentLabel.toUpperCase(),
                     style: pw.TextStyle(
                       color: _kDark,
                       fontSize: 28,
@@ -115,7 +120,10 @@ class PdfService {
                     child: pw.Column(
                       crossAxisAlignment: pw.CrossAxisAlignment.end,
                       children: [
-                        _infoRow('Factuurnummer', invoice.numberLabel),
+                        // A quote is identified by its subject, not by a
+                        // sequence number, so it prints only the date.
+                        if (!invoice.isQuote)
+                          _infoRow('Factuurnummer', invoice.numberLabel),
                         _infoRow('Datum', _date(invoice.issueDate)),
                       ],
                     ),
@@ -224,7 +232,7 @@ class PdfService {
                         style: pw.TextStyle(color: _kDark, fontSize: 11),
                       ),
                     ),
-                    _td(_fmtQty(item.aantal), align: pw.TextAlign.center),
+                    _td(item.aantalLabel, align: pw.TextAlign.center),
                     _td(
                       _fmt(invoice, item.prijsExBtw),
                       align: pw.TextAlign.right,
@@ -254,17 +262,29 @@ class PdfService {
                   children: [
                     _totalRow(
                       'Subtotaal ex. BTW',
-                      _fmt(invoice, invoice.subtotaalExBtw),
+                      _fmtRange(
+                        invoice,
+                        invoice.subtotaalExBtw,
+                        invoice.subtotaalExBtwMax,
+                      ),
                       isBold: false,
                     ),
                     _totalRow(
                       'BTW ${invoice.taxRate.toStringAsFixed(0)}%',
-                      _fmt(invoice, invoice.btwBedrag),
+                      _fmtRange(
+                        invoice,
+                        invoice.btwBedrag,
+                        invoice.btwBedragMax,
+                      ),
                       isBold: false,
                     ),
                     _totalRow(
                       'Totaal incl. BTW',
-                      _fmt(invoice, invoice.totaalInclBtw),
+                      _fmtRange(
+                        invoice,
+                        invoice.totaalInclBtw,
+                        invoice.totaalInclBtwMax,
+                      ),
                       isBold: true,
                     ),
                   ],
@@ -276,7 +296,7 @@ class PdfService {
           pw.SizedBox(height: 16),
 
           // ── Betalingsgegevens ─────────────────────────────────────────────
-          if (invoice.businessIban.isNotEmpty)
+          if (invoice.businessIban.isNotEmpty && !invoice.isQuote)
             pw.Container(
               padding: const pw.EdgeInsets.all(10),
               decoration: pw.BoxDecoration(
@@ -301,27 +321,30 @@ class PdfService {
               ),
             ),
 
-          pw.SizedBox(height: 24),
+          if (!invoice.isQuote) pw.SizedBox(height: 24),
 
           // ── Opmerkingen ──────────────────────────────────────────────────
-          pw.Column(
-            crossAxisAlignment: pw.CrossAxisAlignment.start,
-            children: [
-              pw.Text(
-                'Opmerkingen',
-                style: pw.TextStyle(
-                  color: _kGrey,
-                  fontSize: 9,
-                  fontWeight: pw.FontWeight.bold,
+          // Invoices only: a quote states what the work would cost, and the
+          // notes field is kept for the app's own reference.
+          if (!invoice.isQuote)
+            pw.Column(
+              crossAxisAlignment: pw.CrossAxisAlignment.start,
+              children: [
+                pw.Text(
+                  'Opmerkingen',
+                  style: pw.TextStyle(
+                    color: _kGrey,
+                    fontSize: 9,
+                    fontWeight: pw.FontWeight.bold,
+                  ),
                 ),
-              ),
-              pw.SizedBox(height: 4),
-              pw.Text(
-                invoice.notes.isNotEmpty ? invoice.notes : 'Geen opmerkingen',
-                style: pw.TextStyle(color: _kDark, fontSize: 10),
-              ),
-            ],
-          ),
+                pw.SizedBox(height: 4),
+                pw.Text(
+                  invoice.notes.isNotEmpty ? invoice.notes : 'Geen opmerkingen',
+                  style: pw.TextStyle(color: _kDark, fontSize: 10),
+                ),
+              ],
+            ),
         ],
       ),
     );
@@ -349,15 +372,24 @@ class PdfService {
     ),
   );
 
-  /// Payment state, shown right under the invoice number / date block.
+  /// Payment state, shown right under the invoice number / date block. A quote
+  /// is not owed yet, so it says what it is instead.
   static pw.Widget _statusBadge(Invoice invoice) {
     final isPaid = invoice.status == 'betaald';
-    final color = isPaid ? _kPaid : _kUnpaid;
+    final color = invoice.isQuote
+        ? _kQuote
+        : isPaid
+            ? _kPaid
+            : _kUnpaid;
     return pw.Container(
       padding: const pw.EdgeInsets.symmetric(horizontal: 12, vertical: 6),
       decoration: pw.BoxDecoration(border: pw.Border.all(color: color)),
       child: pw.Text(
-        isPaid ? 'BETAALD' : 'TE BETALEN',
+        invoice.isQuote
+            ? invoice.documentLabel.toUpperCase()
+            : isPaid
+                ? 'BETAALD'
+                : 'TE BETALEN',
         textAlign: pw.TextAlign.center,
         style: pw.TextStyle(
           color: color,
@@ -433,8 +465,6 @@ class PdfService {
     ),
   );
 
-  static String _fmtQty(double qty) =>
-      qty == qty.truncateToDouble() ? qty.toInt().toString() : qty.toString();
 }
 
 extension _InvoiceAddr on Invoice {

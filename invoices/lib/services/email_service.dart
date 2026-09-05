@@ -65,6 +65,11 @@ class EmailService {
   }
 
   /// Replace template variables with actual invoice values.
+  ///
+  /// The template is written for invoices; a quote reuses it with the word
+  /// swapped for what the document actually is, so "Bijgevoegd vindt u
+  /// factuur ..." reads correctly on an offerte or a schaderapport without
+  /// the user maintaining a template per kind.
   static String renderTemplate(String template, Invoice invoice) {
     String voertuigInfo = '';
     if (invoice.clientKenteken.isNotEmpty) {
@@ -76,7 +81,7 @@ class EmailService {
       voertuigInfo = 'voor uw ${invoice.clientProductType}';
     }
 
-    return template
+    final rendered = template
         .replaceAll('{naam}', invoice.clientNaam)
         .replaceAll('{kenteken}', invoice.clientKenteken)
         .replaceAll('{producttype}', invoice.clientProductType)
@@ -92,7 +97,19 @@ class EmailService {
           '{totaal}',
           '${invoice.currency}${invoice.totaalInclBtw.toStringAsFixed(2)}',
         );
+
+    return invoice.isQuote
+        ? _asDocumentWording(rendered, invoice.documentLabel)
+        : rendered;
   }
+
+  static final _factuurWord = RegExp(r'\b(F|f)actuur\b');
+
+  static String _asDocumentWording(String text, String label) =>
+      text.replaceAllMapped(
+        _factuurWord,
+        (m) => m[1] == 'F' ? label : label.toLowerCase(),
+      );
 
   static String buildDefaultSubject(Invoice invoice) {
     final ref = invoice.clientKenteken.isNotEmpty

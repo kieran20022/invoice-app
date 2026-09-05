@@ -15,7 +15,17 @@ Invoice app. Used for generating invoices for clients. Simple interface where us
 9. Custom one-time products: Custom items added to invoices without saving to product list.
 10. Voertuigen: Vehicles currently in the shop, each tied to a "current" invoice. Adding a vehicle (phone number + optional name + plate) immediately creates its invoice in the workshop buffer; tapping the vehicle opens that invoice at the Producten step, and closing the screen persists the items added. The card shows the name when there is one, the number otherwise. The ⋮ menu has "Concept delen" (shares the still-unnumbered PDF), "Afronden" (takes the vehicle out of the shop, numbers its invoice and releases it into the Facturen tab), "Afronden en delen" (the same, then opens the share sheet for the numbered invoice) and "Verwijderen" (throws the record away — vehicle *and* invoice — so nothing reaches the Facturen tab and no invoice number is used).
 11. Direct WhatsApp send: When the invoice carries a client phone number, a green "Direct naar <nummer> via WhatsApp" option appears on `email_editor_screen.dart`, opening that contact's chat with the PDF attached. Android only (needs an explicit intent); hidden elsewhere and when WhatsApp is not installed. NOTE: nothing currently navigates to `EmailEditorScreen`, so this option has no entry point in the running app.
-12. Send email: Share invoice PDF with subject and message via native share sheet (email clients receive subject + body; WhatsApp receives `*Subject*\n\nMessage`). Optional server-side sending via Firebase Cloud Functions + SMTP.
+12. Offertes: An "Offerte Maken" button next to "Nieuwe Factuur" on the
+    Facturen tab runs the same 4-step flow, but the document is a quote: it
+    numbers from its own sequence (`OFF-0001`), says OFFERTE instead of
+    BETAALD/TE BETALEN, carries no payment state or payment details, is left
+    out of the revenue stats, and its items may be estimated as ranges
+    ("1-4 uur arbeid"), which widen the totals into a span. On the Details
+    step a quote can be issued as a **Schaderapport** instead, which only
+    renames it. Its shared PDF is named after what it is rather than its
+    number: `Offerte - Jan - AB-12-CD.pdf`. The badge on its card in the
+    Facturen tab converts it into a real invoice.
+13. Send email: Share invoice PDF with subject and message via native share sheet (email clients receive subject + body; WhatsApp receives `*Subject*\n\nMessage`). Optional server-side sending via Firebase Cloud Functions + SMTP.
 
 # App Workflow
 
@@ -112,9 +122,10 @@ users/{uid}/
   vehicles/{id}            Vehicles in the shop (phone, name, plate, invoiceId)
                            Legacy docs carry `ownerName`; read as `name`
   invoices/{id}            Invoice documents (full snapshots, not references)
+                           `isQuote: true` marks an offerte
 ```
 
-Invoice number is auto-incremented via a Firestore transaction on `nextInvoiceNumber` in the business settings document.
+Invoice number is auto-incremented via a Firestore transaction on `nextInvoiceNumber` in the business settings document; quotes use `nextQuoteNumber` in the same document.
 
 ## PDF Templates
 
@@ -123,6 +134,68 @@ Three templates in `pdf_service.dart`. All use `const PdfColor(r, g, b)` float c
 - **Modern**: Blue header block, alternating row colours, coloured totals
 - **Classic**: Full bordered table, traditional layout
 - **Minimal**: Clean lines, accent colour totals box
+
+## Offertes
+
+An offerte is an `Invoice` with `isQuote: true` rather than a separate model —
+same client snapshot, items, template and PDF. What differs:
+
+- **Numbering** runs off `nextQuoteNumber` / `quotePrefix` (default `OFF`) in
+  the business settings, so a quote never consumes an invoice number and
+  leaves a gap in the Facturen sequence. The draft carries whichever prefix
+  its own sequence uses in `businessInvoicePrefix`, so numbering only has to
+  pick the counter.
+- **No payment state.** The status badge is a plain "Offerte", the swipe-to-paid
+  gesture and the "Markeer als betaald" menu item are gone, and the PDF prints
+  OFFERTE where an invoice prints BETAALD / TE BETALEN. The payment details
+  block is left off entirely.
+- **Not revenue.** The Facturen tab's stats row and `InvoiceStatsScreen` are fed
+  the non-quote invoices; the "Offertes" filter chip lists the quotes.
+- **Email wording.** `EmailService.renderTemplate` swaps the whole word
+  "factuur" for whatever the document is, so the one stored template serves an
+  invoice, an offerte and a schaderapport alike.
+- **No number on the document.** The header box prints only the date for a
+  quote; the number still exists (it identifies the record in the app) but a
+  customer identifies a quote by its subject, not a sequence number.
+- **No Opmerkingen block.** The notes section is printed on invoices only; on
+  a quote the field stays available in the app (and in its preview bar) but
+  does not reach the customer's document.
+- **Filename.** `Invoice.pdfFilename` leads an invoice with its number but a
+  quote with its kind, name and vehicle reference
+  (`Offerte - Jan - AB-12-CD.pdf`), which is what a customer recognises. Parts
+  that are empty are dropped rather than leaving hanging separators, and
+  characters a path cannot carry are replaced.
+
+### Schaderapport
+
+`isDamageReport` is a quote issued as a damage report. It changes nothing but
+the wording — `documentLabel` returns "Schaderapport", which then drives the
+app-bar title, the PDF heading and badge, the email wording and the filename.
+`shortDocumentLabel` is the same thing shortened to "Rapport" for the badge on
+an invoice card and for the create flow's "Naar Rapport" button, where
+the full word runs past its edge. It is chosen with the
+segmented button on the Details step, which only appears for quotes.
+
+### Converting a quote into an invoice
+
+The card's badge in the Facturen tab opens "Omzetten naar factuur"
+(`convertQuoteToInvoice`). `InvoiceProvider.convertToInvoice` takes the next
+*invoice* number, clears the quote wording and rewrites the snapshot's prefix
+to the invoice sequence's. Because an invoice bills an exact quantity, every
+estimated range has to be settled first: `_SettleRangesSheet` asks for a number
+per ranged item, defaulting to the low bound and validated to stay inside the
+span the customer was quoted. Those quantities are applied with
+`clearAantalTot`, so the resulting invoice carries no ranges at all.
+
+### Quantity ranges
+
+`InvoiceItem.aantalTot` is an optional upper bound, offered as a second
+"Aantal tot" field in the item form on quotes only. It counts as a range just
+when it is strictly above `aantal`, so an equal or lower value is stored as no
+range at all. A ranged item shows `1-4` in place of the +/- stepper (stepping
+one bound would silently change the estimate — edit it in the form instead),
+and the document totals gain `...Max` counterparts that `formatAmountRange`
+renders as `€12.10 - €48.40`.
 
 ## Workshop Buffer
 

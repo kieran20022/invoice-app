@@ -67,7 +67,9 @@ class InvoiceProvider extends ChangeNotifier {
     notifyListeners();
   }
 
-  void startNewDraft(BusinessInfo business) {
+  /// [isQuote] starts an offerte instead of an invoice: it numbers from the
+  /// quote sequence and carries no payment state.
+  void startNewDraft(BusinessInfo business, {bool isQuote = false}) {
     final now = DateTime.now();
     _draft = Invoice(
       id: '',
@@ -75,7 +77,10 @@ class InvoiceProvider extends ChangeNotifier {
       issueDate: now,
       clientNaam: '',
       businessName: business.name,
-      businessInvoicePrefix: business.invoicePrefix,
+      // The draft carries the prefix its own sequence uses, so numbering only
+      // has to pick the right counter.
+      businessInvoicePrefix:
+          isQuote ? business.quotePrefix : business.invoicePrefix,
       businessKvk: business.kvk,
       businessIban: business.iban,
       businessPhone: business.phone,
@@ -91,6 +96,7 @@ class InvoiceProvider extends ChangeNotifier {
       taxRate: business.defaultTaxRate,
       currency: business.currency,
       createdAt: now,
+      isQuote: isQuote,
     );
     notifyListeners();
   }
@@ -142,6 +148,7 @@ class InvoiceProvider extends ChangeNotifier {
     double? taxRate,
     DateTime? issueDate,
     String? currency,
+    bool? isDamageReport,
   }) {
     if (_draft == null) return;
     _draft = _draft!.copyWith(
@@ -149,6 +156,7 @@ class InvoiceProvider extends ChangeNotifier {
       taxRate: taxRate,
       issueDate: issueDate,
       currency: currency,
+      isDamageReport: isDamageReport,
     );
     notifyListeners();
   }
@@ -156,6 +164,7 @@ class InvoiceProvider extends ChangeNotifier {
   InvoiceItem createItem({
     String? omschrijving,
     double aantal = 1,
+    double? aantalTot,
     double prijsExBtw = 0,
     String? productId,
   }) =>
@@ -163,6 +172,7 @@ class InvoiceProvider extends ChangeNotifier {
         id: _uuid.v4(),
         omschrijving: omschrijving ?? '',
         aantal: aantal,
+        aantalTot: aantalTot,
         prijsExBtw: prijsExBtw,
         productId: productId,
       );
@@ -186,7 +196,9 @@ class InvoiceProvider extends ChangeNotifier {
     // buffer for days, leaving gaps in the Facturen tab's sequence.
     final formattedNumber = status == workshopStatus
         ? ''
-        : await _nextInvoiceNumber(_draft!.businessInvoicePrefix);
+        : _draft!.isQuote
+            ? await _nextQuoteNumber(_draft!.businessInvoicePrefix)
+            : await _nextInvoiceNumber(_draft!.businessInvoicePrefix);
 
     final invoice = Invoice(
       id: '',
@@ -217,6 +229,8 @@ class InvoiceProvider extends ChangeNotifier {
       taxRate: _draft!.taxRate,
       currency: _draft!.currency,
       createdAt: DateTime.now(),
+      isQuote: _draft!.isQuote,
+      isDamageReport: _draft!.isDamageReport,
     );
 
     final savedId = await _firestore.saveInvoice(_userId!, invoice);
@@ -249,6 +263,8 @@ class InvoiceProvider extends ChangeNotifier {
       taxRate: invoice.taxRate,
       currency: invoice.currency,
       createdAt: invoice.createdAt,
+      isQuote: invoice.isQuote,
+      isDamageReport: invoice.isDamageReport,
     );
 
     _draft = null;
@@ -269,10 +285,18 @@ class InvoiceProvider extends ChangeNotifier {
   /// Formats and consumes the next invoice number for [prefix].
   Future<String> _nextInvoiceNumber(String businessInvoicePrefix) async {
     final number = await _firestore.incrementAndGetInvoiceNumber(_userId!);
-    final prefix =
-        businessInvoicePrefix.isEmpty ? 'F' : businessInvoicePrefix;
-    return '$prefix-${number.toString().padLeft(4, '0')}';
+    return _format(businessInvoicePrefix, number, 'F');
   }
+
+  /// Formats and consumes the next quote number, which runs its own sequence.
+  Future<String> _nextQuoteNumber(String quotePrefix) async {
+    final number = await _firestore.incrementAndGetQuoteNumber(_userId!);
+    return _format(quotePrefix, number, 'OFF');
+  }
+
+  String _format(String prefix, int number, String fallback) =>
+      '${prefix.isEmpty ? fallback : prefix}-'
+      '${number.toString().padLeft(4, '0')}';
 
   /// Releases a vehicle's invoice from the workshop buffer into the Facturen
   /// tab, assigning its invoice number at that moment. Returns the numbered
@@ -288,6 +312,36 @@ class InvoiceProvider extends ChangeNotifier {
     );
     await _firestore.saveInvoice(_userId!, released);
     return released;
+  }
+
+  /// Turns a quote into a real invoice: it takes the next invoice number and
+  /// drops its quote wording. [quantities] gives the settled amount per item
+  /// id — an invoice bills an exact quantity, so every estimated range has to
+  /// be pinned down before the document can be billed.
+  Future<Invoice> convertToInvoice(
+    Invoice quote, {
+    required String invoicePrefix,
+    Map<String, double> quantities = const {},
+  }) async {
+    if (_userId == null || !quote.isQuote) return quote;
+
+    final items = quote.items.map((item) {
+      final settled = quantities[item.id] ?? item.aantal;
+      return item.copyWith(aantal: settled, clearAantalTot: true);
+    }).toList();
+
+    final invoice = quote.copyWith(
+      items: items,
+      isQuote: false,
+      // The snapshot carried the quote sequence's prefix; it now belongs to
+      // the invoice sequence.
+      businessInvoicePrefix: invoicePrefix,
+      isDamageReport: false,
+      status: 'concept',
+      invoiceNumber: await _nextInvoiceNumber(invoicePrefix),
+    );
+    await _firestore.saveInvoice(_userId!, invoice);
+    return invoice;
   }
 
   Future<void> updateStatus(String invoiceId, String status) async {

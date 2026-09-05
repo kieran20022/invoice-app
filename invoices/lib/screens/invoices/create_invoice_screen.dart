@@ -24,6 +24,10 @@ class CreateInvoiceScreen extends StatefulWidget {
   final Invoice? editInvoice;
   final int initialStep;
 
+  /// Builds an offerte instead of an invoice. Ignored when [editInvoice] is
+  /// given — an existing document keeps whichever kind it already is.
+  final bool isQuote;
+
   /// Persists the draft when the screen is closed instead of discarding it.
   /// Used by the Voertuigen tab, where an invoice is worked on across visits
   /// and items added must survive backing out of the screen.
@@ -33,6 +37,7 @@ class CreateInvoiceScreen extends StatefulWidget {
     super.key,
     this.editInvoice,
     this.initialStep = 0,
+    this.isQuote = false,
     this.saveOnClose = false,
   });
 
@@ -42,6 +47,23 @@ class CreateInvoiceScreen extends StatefulWidget {
 
 class _CreateInvoiceScreenState extends State<CreateInvoiceScreen> {
   late int _step;
+
+  bool get _isQuote => widget.editInvoice?.isQuote ?? widget.isQuote;
+
+  /// Quotes can go out as a damage report instead; only the wording changes.
+  bool _isDamageReport = false;
+
+  String get _documentLabel => !_isQuote
+      ? 'Factuur'
+      : _isDamageReport
+      ? 'Schaderapport'
+      : 'Offerte';
+
+  /// Same, shortened for the narrow nav bar button, where "Naar
+  /// Schaderapport" runs past its edge.
+  String get _shortDocumentLabel =>
+      _isQuote && _isDamageReport ? 'Rapport' : _documentLabel;
+
   final _clientFormKey = GlobalKey<FormState>();
   bool _saving = false;
   bool _initialized = false;
@@ -87,6 +109,7 @@ class _CreateInvoiceScreenState extends State<CreateInvoiceScreen> {
       _notes.text = inv.notes;
       _taxRate.text = inv.taxRate.toStringAsFixed(0);
       _currency.text = inv.currency;
+      _isDamageReport = inv.isDamageReport;
       if (inv.clientDatum.isNotEmpty) {
         try {
           _datum = DateFormat('dd-MM-yyyy').parse(inv.clientDatum);
@@ -99,13 +122,17 @@ class _CreateInvoiceScreenState extends State<CreateInvoiceScreen> {
 
     final business = context.read<BusinessProvider>().businessInfo;
     if (business != null) {
-      context.read<InvoiceProvider>().startNewDraft(business);
+      context.read<InvoiceProvider>().startNewDraft(
+        business,
+        isQuote: widget.isQuote,
+      );
       _notes.text = business.defaultNotes ?? '';
       _taxRate.text = business.defaultTaxRate.toString();
       _currency.text = business.currency;
     } else {
       context.read<InvoiceProvider>().startNewDraft(
         BusinessInfo(id: '', name: '', kvk: '', iban: ''),
+        isQuote: widget.isQuote,
       );
       _taxRate.text = '21';
       _currency.text = '€';
@@ -162,6 +189,7 @@ class _CreateInvoiceScreenState extends State<CreateInvoiceScreen> {
         taxRate: double.tryParse(_taxRate.text) ?? 21.0,
         issueDate: _datum,
         currency: _currency.text.trim().isEmpty ? '€' : _currency.text.trim(),
+        isDamageReport: _isDamageReport,
       );
       _saveAndPreview();
     }
@@ -242,6 +270,7 @@ class _CreateInvoiceScreenState extends State<CreateInvoiceScreen> {
         item: item,
         taxRate: draft?.taxRate ?? 21.0,
         currency: draft?.currency ?? '€',
+        allowRange: _isQuote,
       ),
     );
   }
@@ -263,7 +292,9 @@ class _CreateInvoiceScreenState extends State<CreateInvoiceScreen> {
     return Scaffold(
       appBar: AppBar(
         title: Text(
-          widget.editInvoice != null ? 'Factuur bewerken' : 'Nieuwe factuur',
+          widget.editInvoice != null
+              ? '$_documentLabel bewerken'
+              : 'Nieuwe ${_documentLabel.toLowerCase()}',
         ),
         leading: IconButton(
           icon: const Icon(Icons.close),
@@ -321,6 +352,9 @@ class _CreateInvoiceScreenState extends State<CreateInvoiceScreen> {
           notes: _notes,
           taxRate: _taxRate,
           currency: _currency,
+          isQuote: _isQuote,
+          isDamageReport: _isDamageReport,
+          onDamageReportChanged: (v) => setState(() => _isDamageReport = v),
         );
       default:
         return const SizedBox.shrink();
@@ -422,7 +456,7 @@ class _CreateInvoiceScreenState extends State<CreateInvoiceScreen> {
                               : finishesInPlace
                               ? 'Doorgaan'
                               : isLast
-                              ? 'Naar Factuur'
+                              ? 'Naar $_shortDocumentLabel'
                               : 'Volgende',
                         ),
                       ),
@@ -809,7 +843,11 @@ class _ItemsStep extends StatelessWidget {
                   ),
                 ),
                 Text(
-                  '$currency${provider.draft!.totaalInclBtw.toStringAsFixed(2)}',
+                  formatAmountRange(
+                    provider.draft!.totaalInclBtw,
+                    provider.draft!.totaalInclBtwMax,
+                    currency,
+                  ),
                   style: const TextStyle(
                     fontWeight: FontWeight.w700,
                     color: AppTheme.primary,
@@ -881,34 +919,55 @@ class _ItemRow extends StatelessWidget {
 
           Column(
             children: [
-              Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  _QtyBtn(
-                    icon: Icons.remove,
-                    onTap: item.aantal > 1
-                        ? () => onQtyChanged(item.aantal - 1)
-                        : null,
+              // A range is set in the item form — stepping one bound of it
+              // here would silently change what was estimated.
+              if (item.isRange)
+                Padding(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 8,
+                    vertical: 2,
                   ),
-                  SizedBox(
-                    width: 32,
-                    child: Text(
-                      _fmtQty(item.aantal),
-                      textAlign: TextAlign.center,
-                      style: const TextStyle(
-                        fontWeight: FontWeight.w600,
-                        fontSize: 14,
-                      ),
+                  child: Text(
+                    item.aantalLabel,
+                    style: const TextStyle(
+                      fontWeight: FontWeight.w600,
+                      fontSize: 14,
                     ),
                   ),
-                  _QtyBtn(
-                    icon: Icons.add,
-                    onTap: () => onQtyChanged(item.aantal + 1),
-                  ),
-                ],
-              ),
+                )
+              else
+                Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    _QtyBtn(
+                      icon: Icons.remove,
+                      onTap: item.aantal > 1
+                          ? () => onQtyChanged(item.aantal - 1)
+                          : null,
+                    ),
+                    SizedBox(
+                      width: 32,
+                      child: Text(
+                        item.aantalLabel,
+                        textAlign: TextAlign.center,
+                        style: const TextStyle(
+                          fontWeight: FontWeight.w600,
+                          fontSize: 14,
+                        ),
+                      ),
+                    ),
+                    _QtyBtn(
+                      icon: Icons.add,
+                      onTap: () => onQtyChanged(item.aantal + 1),
+                    ),
+                  ],
+                ),
               Text(
-                '$currency${item.totalInclBtw(taxRate).toStringAsFixed(2)}',
+                formatAmountRange(
+                  item.totalInclBtw(taxRate),
+                  item.totalInclBtwMax(taxRate),
+                  currency,
+                ),
                 style: const TextStyle(
                   fontWeight: FontWeight.w700,
                   color: AppTheme.primary,
@@ -949,9 +1008,6 @@ class _ItemRow extends StatelessWidget {
       ),
     );
   }
-
-  static String _fmtQty(double qty) =>
-      qty == qty.truncateToDouble() ? qty.toInt().toString() : qty.toString();
 }
 
 class _QtyBtn extends StatelessWidget {
@@ -1493,10 +1549,16 @@ class _ItemFormSheet extends StatefulWidget {
   final InvoiceItem? item;
   final double taxRate;
   final String currency;
+
+  /// Offers a second quantity field, so a quote can estimate a span
+  /// ("1-4 uur arbeid") instead of a fixed amount.
+  final bool allowRange;
+
   const _ItemFormSheet({
     this.item,
     required this.taxRate,
     required this.currency,
+    this.allowRange = false,
   });
 
   @override
@@ -1507,6 +1569,7 @@ class _ItemFormSheetState extends State<_ItemFormSheet> {
   final _formKey = GlobalKey<FormState>();
   late final TextEditingController _omschrijving;
   late final TextEditingController _aantal;
+  late final TextEditingController _aantalTot;
   late final TextEditingController _prijsExcl;
   late final TextEditingController _prijsIncl;
   bool _updatingPrice = false;
@@ -1517,6 +1580,7 @@ class _ItemFormSheetState extends State<_ItemFormSheet> {
 
   final _omschrijvingFocus = FocusNode();
   final _aantalFocus = FocusNode();
+  final _aantalTotFocus = FocusNode();
   final _prijsExclFocus = FocusNode();
   final _prijsInclFocus = FocusNode();
 
@@ -1528,6 +1592,9 @@ class _ItemFormSheetState extends State<_ItemFormSheet> {
     );
     _aantal = TextEditingController(
       text: widget.item?.aantal.toString() ?? '1',
+    );
+    _aantalTot = TextEditingController(
+      text: widget.item?.aantalTot?.toString() ?? '',
     );
 
     final excl = widget.item?.prijsExBtw;
@@ -1582,25 +1649,48 @@ class _ItemFormSheetState extends State<_ItemFormSheet> {
   void dispose() {
     _omschrijving.dispose();
     _aantal.dispose();
+    _aantalTot.dispose();
     _prijsExcl.dispose();
     _prijsIncl.dispose();
     _omschrijvingFocus.dispose();
     _aantalFocus.dispose();
+    _aantalTotFocus.dispose();
     _prijsExclFocus.dispose();
     _prijsInclFocus.dispose();
     super.dispose();
   }
+
+  /// Upper bound of the quantity, or null when this item is not a range —
+  /// the field being empty, unavailable, or not actually above the lower bound.
+  double? get _aantalTotValue {
+    if (!widget.allowRange) return null;
+    final tot = double.tryParse(_aantalTot.text);
+    final van = double.tryParse(_aantal.text) ?? 1;
+    return tot != null && tot > van ? tot : null;
+  }
+
+  /// The range as it will read on the document, e.g. `1-4`.
+  String get _rangeHint => InvoiceItem(
+        id: '',
+        omschrijving: '',
+        aantal: double.tryParse(_aantal.text) ?? 1,
+        aantalTot: _aantalTotValue,
+        prijsExBtw: 0,
+      ).aantalLabel;
 
   void _save() {
     if (!_formKey.currentState!.validate()) return;
     final provider = context.read<InvoiceProvider>();
     final prijsExBtw = _preciseExclFromIncl ??
         roundPrice(double.tryParse(_prijsExcl.text) ?? 0);
+    final aantalTot = _aantalTotValue;
     if (widget.item != null) {
       provider.updateDraftItem(
         widget.item!.copyWith(
           omschrijving: _omschrijving.text.trim(),
           aantal: double.tryParse(_aantal.text) ?? 1,
+          aantalTot: aantalTot,
+          clearAantalTot: aantalTot == null,
           prijsExBtw: prijsExBtw,
         ),
       );
@@ -1609,6 +1699,7 @@ class _ItemFormSheetState extends State<_ItemFormSheet> {
         provider.createItem(
           omschrijving: _omschrijving.text.trim(),
           aantal: double.tryParse(_aantal.text) ?? 1,
+          aantalTot: aantalTot,
           prijsExBtw: prijsExBtw,
         ),
       );
@@ -1673,20 +1764,70 @@ class _ItemFormSheetState extends State<_ItemFormSheet> {
                   v == null || v.trim().isEmpty ? 'Verplicht' : null,
             ),
             const SizedBox(height: 12),
-            TextFormField(
-              controller: _aantal,
-              focusNode: _aantalFocus,
-              textInputAction: TextInputAction.next,
-              onFieldSubmitted: (_) =>
-                  FocusScope.of(context).requestFocus(_prijsExclFocus),
-              decoration: const InputDecoration(labelText: 'Aantal *'),
-              keyboardType: TextInputType.number,
-              validator: (v) {
-                if (v == null || v.isEmpty) return 'Verplicht';
-                if (double.tryParse(v) == null) return 'Ongeldig';
-                return null;
-              },
+            Row(
+              children: [
+                Expanded(
+                  child: TextFormField(
+                    controller: _aantal,
+                    focusNode: _aantalFocus,
+                    textInputAction: TextInputAction.next,
+                    onFieldSubmitted: (_) => FocusScope.of(context).requestFocus(
+                      widget.allowRange ? _aantalTotFocus : _prijsExclFocus,
+                    ),
+                    decoration: InputDecoration(
+                      labelText: widget.allowRange ? 'Aantal van *' : 'Aantal *',
+                    ),
+                    keyboardType: TextInputType.number,
+                    onChanged: (_) => setState(() {}),
+                    validator: (v) {
+                      if (v == null || v.isEmpty) return 'Verplicht';
+                      if (double.tryParse(v) == null) return 'Ongeldig';
+                      return null;
+                    },
+                  ),
+                ),
+                if (widget.allowRange) ...[
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: TextFormField(
+                      controller: _aantalTot,
+                      focusNode: _aantalTotFocus,
+                      textInputAction: TextInputAction.next,
+                      onFieldSubmitted: (_) =>
+                          FocusScope.of(context).requestFocus(_prijsExclFocus),
+                      decoration: const InputDecoration(
+                        labelText: 'Aantal tot',
+                        hintText: 'Optioneel',
+                      ),
+                      keyboardType: TextInputType.number,
+                      onChanged: (_) => setState(() {}),
+                      validator: (v) {
+                        if (v == null || v.trim().isEmpty) return null;
+                        final tot = double.tryParse(v);
+                        if (tot == null) return 'Ongeldig';
+                        final van = double.tryParse(_aantal.text);
+                        if (van != null && tot <= van) return 'Hoger dan van';
+                        return null;
+                      },
+                    ),
+                  ),
+                ],
+              ],
             ),
+            if (widget.allowRange && _aantalTotValue != null)
+              Padding(
+                padding: const EdgeInsets.only(top: 6),
+                child: Align(
+                  alignment: Alignment.centerLeft,
+                  child: Text(
+                    'Wordt getoond als bereik: $_rangeHint',
+                    style: const TextStyle(
+                      color: AppTheme.textSecondary,
+                      fontSize: 11,
+                    ),
+                  ),
+                ),
+              ),
             const SizedBox(height: 12),
             Row(
               children: [
@@ -1783,17 +1924,50 @@ class _ItemFormSheetState extends State<_ItemFormSheet> {
 
 class _DetailsStep extends StatelessWidget {
   final TextEditingController notes, taxRate, currency;
+  final bool isQuote;
+  final bool isDamageReport;
+  final ValueChanged<bool> onDamageReportChanged;
 
   const _DetailsStep({
     required this.notes,
     required this.taxRate,
     required this.currency,
+    required this.isQuote,
+    required this.isDamageReport,
+    required this.onDamageReportChanged,
   });
 
   @override
   Widget build(BuildContext context) {
     return Column(
       children: [
+        if (isQuote) ...[
+          Align(
+            alignment: Alignment.centerLeft,
+            child: Text(
+              'Soort document',
+              style: TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w500,
+                color: AppTheme.onSurfaceVariant(context),
+              ),
+            ),
+          ),
+          const SizedBox(height: 6),
+          SizedBox(
+            width: double.infinity,
+            child: SegmentedButton<bool>(
+              segments: const [
+                ButtonSegment(value: false, label: Text('Offerte')),
+                ButtonSegment(value: true, label: Text('Schaderapport')),
+              ],
+              selected: {isDamageReport},
+              showSelectedIcon: false,
+              onSelectionChanged: (sel) => onDamageReportChanged(sel.first),
+            ),
+          ),
+          const SizedBox(height: 16),
+        ],
         Row(
           children: [
             Expanded(
@@ -1820,7 +1994,7 @@ class _DetailsStep extends StatelessWidget {
           controller: notes,
           decoration: const InputDecoration(
             labelText: 'Opmerkingen',
-            hintText: 'Eventuele opmerkingen bij de factuur',
+            hintText: 'Eventuele opmerkingen bij het document',
           ),
           maxLines: 4,
         ),
