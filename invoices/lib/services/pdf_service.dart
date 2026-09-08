@@ -375,7 +375,7 @@ class PdfService {
   /// Payment state, shown right under the invoice number / date block. A quote
   /// is not owed yet, so it says what it is instead.
   static pw.Widget _statusBadge(Invoice invoice) {
-    final isPaid = invoice.status == 'betaald';
+    final isPaid = invoice.isPaid;
     final color = invoice.isQuote
         ? _kQuote
         : isPaid

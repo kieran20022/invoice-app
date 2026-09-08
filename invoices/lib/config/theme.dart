@@ -12,6 +12,14 @@ class AppTheme {
   static const Color border = Color(0xFFE2E8F0);
   static const Color error = Color(0xFFEF4444);
 
+  /// The payment methods keep one colour each wherever a state is shown: the
+  /// swipe panel, the card badge, the preview badge and the stats screen.
+  static const Color cash = Color(0xFF10B981);
+
+  /// Violet rather than the app's blue: on the stats chart the pin line runs
+  /// alongside the "Totaal" line, and two blues cannot be told apart.
+  static const Color card = Color(0xFF8B5CF6);
+
   // Dark colours
   static const Color darkBackground = Color(0xFF0F172A);
   static const Color darkSurface = Color(0xFF1E293B);

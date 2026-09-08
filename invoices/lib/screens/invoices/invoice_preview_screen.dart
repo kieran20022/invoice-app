@@ -41,11 +41,19 @@ class _InvoicePreviewScreenState extends State<InvoicePreviewScreen> {
             onSelected: _handleMenu,
             itemBuilder: (_) => [
               // A quote is not owed yet, so there is nothing to mark paid.
-              if (!_invoice.isQuote && _invoice.status != 'betaald')
-                const PopupMenuItem(
-                  value: 'betaald',
-                  child: Text('Markeer als betaald'),
-                ),
+              // How it was paid is part of the state, hence two entries.
+              if (!_invoice.isQuote) ...[
+                if (_invoice.status != Invoice.paidCash)
+                  const PopupMenuItem(
+                    value: Invoice.paidCash,
+                    child: Text('Contant betaald'),
+                  ),
+                if (_invoice.status != Invoice.paidCard)
+                  const PopupMenuItem(
+                    value: Invoice.paidCard,
+                    child: Text('Pin betaald'),
+                  ),
+              ],
               const PopupMenuItem(
                 value: 'download',
                 child: Text('PDF Downloaden'),
@@ -70,7 +78,7 @@ class _InvoicePreviewScreenState extends State<InvoicePreviewScreen> {
                 _StatusBadge(
                   status: _invoice.isQuote
                       ? _invoice.documentLabel
-                      : _invoice.status,
+                      : _invoice.statusLabel,
                   color: _invoice.isQuote
                       ? AppTheme.primary
                       : _statusColor(_invoice.status),
@@ -272,7 +280,9 @@ class _InvoicePreviewScreenState extends State<InvoicePreviewScreen> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Factuur gemarkeerd als $action'),
+            content: Text(
+              'Factuur gemarkeerd als ${_invoice.statusLabel.toLowerCase()}',
+            ),
             behavior: SnackBarBehavior.floating,
           ),
         );
@@ -305,7 +315,8 @@ class _MetaChip extends StatelessWidget {
 }
 
 Color _statusColor(String status) => switch (status) {
-  'betaald' => const Color(0xFF10B981),
+  Invoice.paidCash || 'betaald' => AppTheme.cash,
+  Invoice.paidCard => AppTheme.card,
   _ => AppTheme.textSecondary,
 };
 

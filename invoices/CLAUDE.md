@@ -10,7 +10,7 @@ Invoice app. Used for generating invoices for clients. Simple interface where us
 4. Client information: Input client name, company, address, email, phone.
 5. Invoice details: Services/products billed, amounts, notes, terms, tax rate, issue date, due date.
 6. Invoice generation: Professional PDF invoice — 3 templates (Modern, Classic, Minimal). Download as PDF or send via email/WhatsApp.
-7. Invoice history: List of all invoices with search, filter by status (draft/sent/paid), and revenue stats.
+7. Invoice history: List of all invoices with search, filter by status (draft/paid/quotes), and revenue stats. A card is swiped right and up for Contant Betaald, right and down for Pin Betaald, and left to delete.
 8. Products: Saved product/service list with name, description, price, unit. Organised in categories and optional sub-categories (created when adding a product, or in bulk by long-pressing products in one category and selecting them). Quickly added to invoices.
 9. Custom one-time products: Custom items added to invoices without saving to product list.
 10. Voertuigen: Vehicles currently in the shop, each tied to a "current" invoice. Adding a vehicle (phone number + optional name + plate) immediately creates its invoice in the workshop buffer; tapping the vehicle opens that invoice at the Producten step, and closing the screen persists the items added. The card shows the name when there is one, the number otherwise. The ⋮ menu has "Concept delen" (shares the still-unnumbered PDF), "Afronden" (takes the vehicle out of the shop, numbers its invoice and releases it into the Facturen tab), "Afronden en delen" (the same, then opens the share sheet for the numbered invoice) and "Verwijderen" (throws the record away — vehicle *and* invoice — so nothing reaches the Facturen tab and no invoice number is used).
@@ -240,6 +240,62 @@ never wraps mid-number. `decimals` drops to 0 for the stats/summary tiles and
 separator (`8,25` and `8.25` both give 8.25), since a Dutch keyboard offers a
 comma while `double.tryParse` only accepts a point. Every numeric field parses
 through it; fields holding decimals use `numberWithOptions(decimal: true)`.
+
+## Invoice States
+
+`status` carries how an invoice was settled, not just that it was:
+`Invoice.paidCash` (`'contant'`) and `Invoice.paidCard` (`'pin'`) next to
+`'concept'` and the workshop buffer's `'werkplaats'`. `'betaald'` is the older
+paid state, from before the method was recorded, and still counts everywhere.
+
+- `Invoice.isPaid` is what every "is this settled" check reads — revenue stats,
+  the Betaald filter chip, the PDF's BETAALD / TE BETALEN badge. Never compare
+  `status` to `'betaald'` directly.
+- `Invoice.statusLabel` renders the state for the app ("Contant betaald"),
+  used by the card badge, the preview's badge and its snackbar.
+- Colours follow the method and live in one place, `AppTheme.cash` (green
+  `#10B981`) and `AppTheme.card` (violet `#8B5CF6`) — violet rather than the
+  app's blue because the pin line runs alongside the blue "Totaal" line on the
+  stats chart. Used by the swipe panel, both status badges and the stats
+  screen.
+
+The stats screen keeps the two apart throughout: separate chart lines (with
+the paid line split in two), a Contant and a Pin card under Analyse showing
+what came in each way, and their own rows in the status breakdown. Invoices
+carrying the older `'betaald'` state count towards the paid total but towards
+neither method, and get their own breakdown row only when there are any.
+
+Covered by `test/invoice_status_test.dart`.
+
+## Swipeable Invoice Cards
+
+A card in the Facturen tab acts on the swipe itself — there is nothing to tap
+afterwards (`MovableInvoiceCard`,
+`lib/screens/invoices/movable_invoice_card.dart`). The direction is the
+choice:
+
+- **Right and up** → Contant Betaald.
+- **Right and down** → Pin Betaald.
+- **Left** → delete, which asks for confirmation.
+
+While the finger is down, the panel behind the card shows both payment
+options and fills in the half the swipe is currently aimed at, so letting go
+never surprises. A swipe shorter than the threshold, or one to the right with
+no up or down to it, springs back and does nothing. A quote passes neither
+payment action, leaving that side inert.
+
+Details worth keeping:
+
+- The gesture is a **horizontal** drag, so the list still scrolls normally. A
+  horizontal recognizer zeroes the vertical delta, so the up/down half is read
+  off `globalPosition.dy` against where the swipe started, not off `delta`.
+- `verticalThreshold` (8px) is what keeps a dead-straight swipe from picking a
+  payment method by rounding noise.
+- The `AnimationController` is built in `initState`, not lazily: a card that is
+  never swiped would otherwise have its controller created by its own
+  `dispose()`, which throws.
+
+Covered by `test/movable_card_test.dart`, which drives the real gestures.
 
 ## Phone Input
 

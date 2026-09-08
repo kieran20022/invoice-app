@@ -6,6 +6,7 @@ import '../../models/invoice.dart';
 import '../../providers/business_provider.dart';
 import '../../providers/invoice_provider.dart';
 import '../../utils/price.dart';
+import 'movable_invoice_card.dart';
 import 'invoice_preview_screen.dart';
 import 'invoice_stats_screen.dart';
 
@@ -20,6 +21,50 @@ class _InvoiceHistoryScreenState extends State<InvoiceHistoryScreen> {
   String _filter = 'alle';
   String _search = '';
 
+  /// Marking an invoice paid, swiped right and up (contant) or right and
+  /// down (pin). A quote carries no payment state, so it gets neither.
+  MovableCardAction? _paidAction(Invoice invoice, String status) {
+    if (invoice.isQuote) return null;
+    final cash = status == Invoice.paidCash;
+    return MovableCardAction(
+      label: cash ? 'Contant' : 'Pin',
+      icon: cash ? Icons.payments_rounded : Icons.credit_card_rounded,
+      color: cash ? AppTheme.cash : AppTheme.card,
+      selected: invoice.status == status,
+      onPressed: () =>
+          context.read<InvoiceProvider>().updateStatus(invoice.id, status),
+    );
+  }
+
+  /// Deleting throws the document away for good, so it asks first. Returns
+  /// once the user has answered, and the card closes either way.
+  Future<void> _confirmDelete(Invoice invoice) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text('${invoice.documentLabel} verwijderen'),
+        content: Text(
+          'Wil je ${invoice.numberLabel} verwijderen? '
+          'Dit kan niet ongedaan worden gemaakt.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Annuleren'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            style: TextButton.styleFrom(foregroundColor: AppTheme.error),
+            child: const Text('Verwijderen'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed == true && mounted) {
+      await context.read<InvoiceProvider>().deleteInvoice(invoice.id);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final provider = context.watch<InvoiceProvider>();
@@ -30,6 +75,9 @@ class _InvoiceHistoryScreenState extends State<InvoiceHistoryScreen> {
     final invoices = provider.invoices.where((inv) {
       if (_filter == 'offerte') {
         if (!inv.isQuote) return false;
+      } else if (_filter == 'betaald') {
+        // Both paid states — contant and pin — belong under "Betaald".
+        if (inv.isQuote || !inv.isPaid) return false;
       } else if (_filter != 'alle') {
         if (inv.isQuote || inv.status != _filter) return false;
       }
@@ -153,115 +201,20 @@ class _InvoiceHistoryScreenState extends State<InvoiceHistoryScreen> {
                     itemCount: invoices.length,
                     itemBuilder: (ctx, i) {
                       final invoice = invoices[i];
-                      final card = _InvoiceCard(
-                        invoice: invoice,
-                        onTap: () => Navigator.of(context).push(
-                          MaterialPageRoute(
-                            builder: (_) =>
-                                InvoicePreviewScreen(invoice: invoice),
-                          ),
-                        ),
-                      );
-                      if (_filter != 'alle' && _filter != 'concept') {
-                        return card;
-                      }
-                      final swipeable = _InvoiceCard(
-                        invoice: invoice,
-                        margin: EdgeInsets.zero,
-                        wrapInCard: false,
-                        onTap: () => Navigator.of(context).push(
-                          MaterialPageRoute(
-                            builder: (_) =>
-                                InvoicePreviewScreen(invoice: invoice),
-                          ),
-                        ),
-                      );
-                      return Container(
-                        margin: const EdgeInsets.only(bottom: 10),
-                        child: Material(
-                          elevation: 1,
-                          borderRadius: BorderRadius.circular(12),
-                          clipBehavior: Clip.antiAlias,
-                          color: Theme.of(context).cardColor,
-                          child: Dismissible(
-                            key: ValueKey(invoice.id),
-                            // Swiping right marks paid, which a quote cannot
-                            // be — so it gets no such affordance.
-                            background: invoice.isQuote
-                                ? const SizedBox.shrink()
-                                : Container(
-                                    alignment: Alignment.centerLeft,
-                                    padding: const EdgeInsets.symmetric(
-                                      horizontal: 20,
-                                    ),
-                                    color: const Color(0xFF10B981),
-                                    child: const Icon(
-                                      Icons.payments_rounded,
-                                      color: Colors.white,
-                                      size: 28,
-                                    ),
-                                  ),
-                            secondaryBackground: Container(
-                              alignment: Alignment.centerRight,
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 20,
-                              ),
-                              color: AppTheme.error,
-                              child: const Icon(
-                                Icons.delete_rounded,
-                                color: Colors.white,
-                                size: 28,
-                              ),
+                      return MovableInvoiceCard(
+                        key: ValueKey(invoice.id),
+                        swipeUp: _paidAction(invoice, Invoice.paidCash),
+                        swipeDown: _paidAction(invoice, Invoice.paidCard),
+                        onDelete: () => _confirmDelete(invoice),
+                        child: _InvoiceCard(
+                          invoice: invoice,
+                          margin: EdgeInsets.zero,
+                          wrapInCard: false,
+                          onTap: () => Navigator.of(context).push(
+                            MaterialPageRoute(
+                              builder: (_) =>
+                                  InvoicePreviewScreen(invoice: invoice),
                             ),
-                            confirmDismiss: (direction) async {
-                              if (direction == DismissDirection.startToEnd) {
-                                // A quote is not owed, so it cannot be paid.
-                                if (invoice.isQuote ||
-                                    invoice.status == 'betaald') {
-                                  return false;
-                                }
-                                await context
-                                    .read<InvoiceProvider>()
-                                    .updateStatus(invoice.id, 'betaald');
-                                return false;
-                              } else {
-                                return await showDialog<bool>(
-                                      context: context,
-                                      builder: (ctx) => AlertDialog(
-                                        title: Text(
-                                          '${invoice.documentLabel} verwijderen',
-                                        ),
-                                        content: Text(
-                                          'Wil je ${invoice.invoiceNumber} verwijderen? Dit kan niet ongedaan worden gemaakt.',
-                                        ),
-                                        actions: [
-                                          TextButton(
-                                            onPressed: () =>
-                                                Navigator.pop(ctx, false),
-                                            child: const Text('Annuleren'),
-                                          ),
-                                          TextButton(
-                                            onPressed: () =>
-                                                Navigator.pop(ctx, true),
-                                            style: TextButton.styleFrom(
-                                              foregroundColor: AppTheme.error,
-                                            ),
-                                            child: const Text('Verwijderen'),
-                                          ),
-                                        ],
-                                      ),
-                                    ) ??
-                                    false;
-                              }
-                            },
-                            onDismissed: (direction) {
-                              if (direction == DismissDirection.endToStart) {
-                                context.read<InvoiceProvider>().deleteInvoice(
-                                  invoice.id,
-                                );
-                              }
-                            },
-                            child: swipeable,
                           ),
                         ),
                       );
@@ -291,7 +244,7 @@ class _StatsRow extends StatelessWidget {
   Widget build(BuildContext context) {
     final total = invoices.fold(0.0, (s, i) => s + i.totaalInclBtw);
     final paid = invoices
-        .where((i) => i.status == 'betaald')
+        .where((i) => i.isPaid)
         .fold(0.0, (s, i) => s + i.totaalInclBtw);
     final currency = invoices.isNotEmpty ? invoices.first.currency : '€';
 
@@ -507,20 +460,24 @@ class _TappableStatusBadge extends StatelessWidget {
   final Invoice invoice;
   const _TappableStatusBadge({required this.invoice});
 
+  /// The states an invoice can be put in from its badge. How it was paid is
+  /// part of the state, so there are two paid ones.
   static const _allStatuses = [
     ('concept', 'Concept'),
-    ('betaald', 'Betaald'),
+    (Invoice.paidCash, 'Contant betaald'),
+    (Invoice.paidCard, 'Pin betaald'),
   ];
 
   static Color _colorFor(String s) => switch (s) {
-    'betaald' => const Color(0xFF10B981),
+    Invoice.paidCash || 'betaald' => AppTheme.cash,
+    Invoice.paidCard => AppTheme.card,
     _ => AppTheme.textSecondary,
   };
 
   @override
   Widget build(BuildContext context) {
     final color = _colorFor(invoice.status);
-    final label = invoice.status[0].toUpperCase() + invoice.status.substring(1);
+    final label = invoice.statusLabel;
 
     return PopupMenuButton<String>(
       onSelected: (s) =>

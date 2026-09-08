@@ -158,6 +158,29 @@ class Invoice {
 
   bool get hasRange => items.any((i) => i.isRange);
 
+  /// Paid in cash. One of the two paid states an invoice can be moved into
+  /// from its card in the Facturen tab.
+  static const String paidCash = 'contant';
+
+  /// Paid by card (pin).
+  static const String paidCard = 'pin';
+
+  /// Whether the invoice is settled, whichever way it was paid. `'betaald'`
+  /// is the older state, from before the payment method was recorded, and
+  /// still counts.
+  bool get isPaid =>
+      status == 'betaald' || status == paidCash || status == paidCard;
+
+  /// The payment state as shown in the app: the method is part of the state,
+  /// so a card says "Contant betaald" rather than a bare "Betaald".
+  String get statusLabel => switch (status) {
+        paidCash => 'Contant betaald',
+        paidCard => 'Pin betaald',
+        'betaald' => 'Betaald',
+        'concept' => 'Concept',
+        _ => status.isEmpty ? '' : status[0].toUpperCase() + status.substring(1),
+      };
+
   /// What this document is called — used in titles, dialogs, the PDF and the
   /// shared filename.
   String get documentLabel => !isQuote

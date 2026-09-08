@@ -5,6 +5,9 @@ import 'package:intl/intl.dart';
 import '../../config/theme.dart';
 import '../../models/invoice.dart';
 
+String? _invoiceCount(int count) =>
+    count == 0 ? null : '$count ${count == 1 ? 'factuur' : 'facturen'}';
+
 class InvoiceStatsScreen extends StatefulWidget {
   final List<Invoice> allInvoices;
 
@@ -118,21 +121,42 @@ class _InvoiceStatsScreenState extends State<InvoiceStatsScreen> {
 
     final monthTotal = invoices.fold(0.0, (s, i) => s + i.totaalInclBtw);
     final monthPaid = invoices
-        .where((i) => i.status == 'betaald')
+        .where((i) => i.isPaid)
         .fold(0.0, (s, i) => s + i.totaalInclBtw);
 
     final totalSpots = <FlSpot>[];
-    final paidSpots = <FlSpot>[];
+    final cashSpots = <FlSpot>[];
+    final cardSpots = <FlSpot>[];
     final outstandingSpots = <FlSpot>[];
 
     for (int d = 1; d <= daysInMonth; d++) {
       final day = invoices.where((inv) => inv.issueDate.day == d).toList();
       final total = day.fold(0.0, (s, i) => s + i.totaalInclBtw);
       final paid = day
-          .where((i) => i.status == 'betaald')
+          .where((i) => i.isPaid)
           .fold(0.0, (s, i) => s + i.totaalInclBtw);
-      totalSpots.add(FlSpot(d.toDouble(), total));
-      paidSpots.add(FlSpot(d.toDouble(), paid));
+      // The two methods are drawn apart, so a day's takings say how they came
+      // in. A pre-method 'betaald' invoice counts towards neither line, but
+      // still towards the paid total and Openstaand.
+      totalSpots.add(
+        FlSpot(d.toDouble(), total),
+      );
+      cashSpots.add(
+        FlSpot(
+          d.toDouble(),
+          day
+              .where((i) => i.status == Invoice.paidCash)
+              .fold(0.0, (s, i) => s + i.totaalInclBtw),
+        ),
+      );
+      cardSpots.add(
+        FlSpot(
+          d.toDouble(),
+          day
+              .where((i) => i.status == Invoice.paidCard)
+              .fold(0.0, (s, i) => s + i.totaalInclBtw),
+        ),
+      );
       outstandingSpots.add(FlSpot(d.toDouble(), total - paid));
     }
 
@@ -164,8 +188,16 @@ class _InvoiceStatsScreenState extends State<InvoiceStatsScreen> {
 
     final conceptCount =
         invoices.where((i) => i.status == 'concept').length;
-    final betaaldCount =
-        invoices.where((i) => i.status == 'betaald').length;
+
+    // Paid split by how it was paid. Invoices settled before the method was
+    // recorded keep their own row rather than being guessed into one.
+    final cash =
+        invoices.where((i) => i.status == Invoice.paidCash).toList();
+    final card =
+        invoices.where((i) => i.status == Invoice.paidCard).toList();
+    final legacyPaidCount = invoices.where((i) => i.status == 'betaald').length;
+    final cashTotal = cash.fold(0.0, (s, i) => s + i.totaalInclBtw);
+    final cardTotal = card.fold(0.0, (s, i) => s + i.totaalInclBtw);
 
     return Scaffold(
       backgroundColor: AppTheme.bg(context),
@@ -221,12 +253,14 @@ class _InvoiceStatsScreenState extends State<InvoiceStatsScreen> {
                                   spots.map((spot) {
                                     const colors = [
                                       AppTheme.primary,
-                                      Color(0xFF10B981),
+                                      AppTheme.cash,
+                                      AppTheme.card,
                                       AppTheme.error,
                                     ];
                                     const labels = [
                                       'Totaal',
-                                      'Betaald',
+                                      'Contant',
+                                      'Pin',
                                       'Openstaand',
                                     ];
                                     return LineTooltipItem(
@@ -321,7 +355,8 @@ class _InvoiceStatsScreenState extends State<InvoiceStatsScreen> {
                           maxY: chartMaxY,
                           lineBarsData: [
                             _bar(totalSpots, AppTheme.primary),
-                            _bar(paidSpots, const Color(0xFF10B981)),
+                            _bar(cashSpots, AppTheme.cash),
+                            _bar(cardSpots, AppTheme.card),
                             _bar(outstandingSpots, AppTheme.error),
                           ],
                         ),
@@ -361,6 +396,40 @@ class _InvoiceStatsScreenState extends State<InvoiceStatsScreen> {
                       ),
                     ),
                     Padding(
+                      padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+                      child: Row(
+                        children: [
+                          Expanded(
+                            child: _StatCard(
+                              label: 'Contant',
+                              value: formatMoney(
+                                cashTotal,
+                                currency: currency,
+                                decimals: 0,
+                              ),
+                              icon: Icons.payments_rounded,
+                              color: AppTheme.cash,
+                              subtitle: _invoiceCount(cash.length),
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: _StatCard(
+                              label: 'Pin',
+                              value: formatMoney(
+                                cardTotal,
+                                currency: currency,
+                                decimals: 0,
+                              ),
+                              icon: Icons.credit_card_rounded,
+                              color: AppTheme.card,
+                              subtitle: _invoiceCount(card.length),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    Padding(
                       padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
                       child: Row(
                         children: [
@@ -394,7 +463,9 @@ class _InvoiceStatsScreenState extends State<InvoiceStatsScreen> {
                       padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
                       child: _StatusBreakdown(
                         concept: conceptCount,
-                        betaald: betaaldCount,
+                        cash: cash.length,
+                        card: card.length,
+                        legacyPaid: legacyPaidCount,
                         total: invoices.length,
                       ),
                     ),
@@ -536,15 +607,21 @@ class _Legend extends StatelessWidget {
   const _Legend();
 
   @override
-  Widget build(BuildContext context) => Row(
-    mainAxisAlignment: MainAxisAlignment.center,
-    children: [
-      _LegendDot('Totaal', AppTheme.primary),
-      const SizedBox(width: 20),
-      _LegendDot('Betaald', Color(0xFF10B981)),
-      const SizedBox(width: 20),
-      _LegendDot('Openstaand', AppTheme.error),
-    ],
+  // Four lines no longer fit on one row on a narrow phone, so the legend
+  // wraps rather than overflowing.
+  Widget build(BuildContext context) => Padding(
+    padding: const EdgeInsets.symmetric(horizontal: 16),
+    child: Wrap(
+      alignment: WrapAlignment.center,
+      spacing: 20,
+      runSpacing: 8,
+      children: const [
+        _LegendDot('Totaal', AppTheme.primary),
+        _LegendDot('Contant', AppTheme.cash),
+        _LegendDot('Pin', AppTheme.card),
+        _LegendDot('Openstaand', AppTheme.error),
+      ],
+    ),
   );
 }
 
@@ -665,10 +742,17 @@ class _StatCard extends StatelessWidget {
 // ── Status breakdown ──────────────────────────────────────────────────────────
 
 class _StatusBreakdown extends StatelessWidget {
-  final int concept, betaald, total;
+  final int concept, cash, card, total;
+
+  /// Invoices paid before the method was recorded. Their row only appears
+  /// when there are any, so a month of new invoices does not carry it.
+  final int legacyPaid;
+
   const _StatusBreakdown({
     required this.concept,
-    required this.betaald,
+    required this.cash,
+    required this.card,
+    required this.legacyPaid,
     required this.total,
   });
 
@@ -684,11 +768,27 @@ class _StatusBreakdown extends StatelessWidget {
       child: Column(
         children: [
           _StatusRow(
-            label: 'Betaald',
-            count: betaald,
+            label: 'Contant betaald',
+            count: cash,
             total: total,
-            color: const Color(0xFF10B981),
+            color: AppTheme.cash,
           ),
+          const SizedBox(height: 12),
+          _StatusRow(
+            label: 'Pin betaald',
+            count: card,
+            total: total,
+            color: AppTheme.card,
+          ),
+          if (legacyPaid > 0) ...[
+            const SizedBox(height: 12),
+            _StatusRow(
+              label: 'Betaald',
+              count: legacyPaid,
+              total: total,
+              color: const Color(0xFF10B981),
+            ),
+          ],
           const SizedBox(height: 12),
           _StatusRow(
             label: 'Concept',
