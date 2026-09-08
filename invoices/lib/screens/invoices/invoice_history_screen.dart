@@ -295,9 +295,10 @@ class _StatsRow extends StatelessWidget {
         .fold(0.0, (s, i) => s + i.totaalInclBtw);
     final currency = invoices.isNotEmpty ? invoices.first.currency : '€';
 
-    final totalStr = '$currency${total.toStringAsFixed(0)}';
-    final paidStr = '$currency${paid.toStringAsFixed(0)}';
-    final unpaidStr = '$currency${(total - paid).toStringAsFixed(0)}';
+    final totalStr = formatMoney(total, currency: currency, decimals: 0);
+    final paidStr = formatMoney(paid, currency: currency, decimals: 0);
+    final unpaidStr =
+        formatMoney(total - paid, currency: currency, decimals: 0);
     final countStr = '${invoices.length}';
     final fs = _fontSize([totalStr, paidStr, unpaidStr, countStr]);
 
@@ -697,7 +698,8 @@ class _SettleRangesSheetState extends State<_SettleRangesSheet> {
     if (!_formKey.currentState!.validate()) return;
     Navigator.pop(context, {
       for (final entry in _controllers.entries)
-        entry.key: double.parse(entry.value.text),
+        // The form validated every field before this runs.
+        entry.key: parseDecimalInput(entry.value.text)!,
     });
   }
 
@@ -756,11 +758,11 @@ class _SettleRangesSheetState extends State<_SettleRangesSheet> {
                       labelText: item.omschrijving,
                       helperText: 'Geschat: ${item.aantalLabel}',
                       suffixText:
-                          '${widget.quote.currency}'
-                          '${item.prijsExBtw.toStringAsFixed(2)} p/st',
+                          '${formatMoney(item.prijsExBtw, currency: widget.quote.currency)}'
+                          ' p/st',
                     ),
                     validator: (v) {
-                      final value = double.tryParse(v ?? '');
+                      final value = parseDecimalInput(v ?? '');
                       if (value == null) return 'Ongeldig';
                       if (value < item.aantal || value > item.aantalMax) {
                         return 'Kies tussen ${item.aantalLabel}';

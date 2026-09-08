@@ -4,6 +4,7 @@ import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
 import '../models/invoice.dart';
+import '../utils/price.dart';
 
 const _kDark = PdfColor(0.122, 0.161, 0.216);
 const _kGrey = PdfColor(0.420, 0.447, 0.502);
@@ -21,11 +22,10 @@ class PdfService {
     return pw.ThemeData.withFont(base: base, bold: bold, italic: italic);
   }
 
+  /// Money on the document: thousands spaced and a decimal comma
+  /// (€1 234,56), the Dutch convention a customer reads.
   static String _fmt(Invoice inv, double amount) =>
-      '${inv.currency}${NumberFormat('#,##0.00').format(amount)}'.replaceAll(
-        '.',
-        ',',
-      );
+      formatMoney(amount, currency: inv.currency, decimalSeparator: ',');
 
   static String _date(DateTime d) => DateFormat('dd-MM-yyyy').format(d);
 

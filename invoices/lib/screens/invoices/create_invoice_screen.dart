@@ -186,7 +186,7 @@ class _CreateInvoiceScreenState extends State<CreateInvoiceScreen> {
     } else if (_step == 2) {
       context.read<InvoiceProvider>().updateDraftDetails(
         notes: _notes.text.trim(),
-        taxRate: double.tryParse(_taxRate.text) ?? 21.0,
+        taxRate: parseDecimalInput(_taxRate.text) ?? 21.0,
         issueDate: _datum,
         currency: _currency.text.trim().isEmpty ? '€' : _currency.text.trim(),
         isDamageReport: _isDamageReport,
@@ -906,8 +906,8 @@ class _ItemRow extends StatelessWidget {
                 ),
                 const SizedBox(height: 2),
                 Text(
-                  '$currency${item.prijsExBtw.toStringAsFixed(2)} ex. BTW → '
-                  '$currency${item.prijsInclBtw(taxRate).toStringAsFixed(2)} incl.',
+                  '${formatMoney(item.prijsExBtw, currency: currency)} ex. BTW → '
+                  '${formatMoney(item.prijsInclBtw(taxRate), currency: currency)} incl.',
                   style: const TextStyle(
                     color: AppTheme.textSecondary,
                     fontSize: 11,
@@ -1533,7 +1533,7 @@ class _ProductTile extends StatelessWidget {
       ),
       subtitle: product.description.isNotEmpty ? Text(product.description) : null,
       trailing: Text(
-        '$currency${inclPrice.toStringAsFixed(2)} incl. BTW',
+        '${formatMoney(inclPrice, currency: currency)} incl. BTW',
         style: const TextStyle(
           color: AppTheme.primary,
           fontWeight: FontWeight.w600,
@@ -1621,7 +1621,7 @@ class _ItemFormSheetState extends State<_ItemFormSheet> {
     if (_updatingPrice) return;
     _preciseExclFromIncl = null;
     _updatingPrice = true;
-    final excl = double.tryParse(_prijsExcl.text);
+    final excl = parseDecimalInput(_prijsExcl.text);
     if (excl != null) {
       _prijsIncl.text = (excl * (1 + widget.taxRate / 100)).toStringAsFixed(2);
     } else if (_prijsExcl.text.isEmpty) {
@@ -1633,7 +1633,7 @@ class _ItemFormSheetState extends State<_ItemFormSheet> {
   void _onInclChanged() {
     if (_updatingPrice) return;
     _updatingPrice = true;
-    final incl = double.tryParse(_prijsIncl.text);
+    final incl = parseDecimalInput(_prijsIncl.text);
     if (incl != null) {
       final excl = roundPrice(incl / (1 + widget.taxRate / 100));
       _preciseExclFromIncl = excl;
@@ -1664,8 +1664,8 @@ class _ItemFormSheetState extends State<_ItemFormSheet> {
   /// the field being empty, unavailable, or not actually above the lower bound.
   double? get _aantalTotValue {
     if (!widget.allowRange) return null;
-    final tot = double.tryParse(_aantalTot.text);
-    final van = double.tryParse(_aantal.text) ?? 1;
+    final tot = parseDecimalInput(_aantalTot.text);
+    final van = parseDecimalInput(_aantal.text) ?? 1;
     return tot != null && tot > van ? tot : null;
   }
 
@@ -1673,7 +1673,7 @@ class _ItemFormSheetState extends State<_ItemFormSheet> {
   String get _rangeHint => InvoiceItem(
         id: '',
         omschrijving: '',
-        aantal: double.tryParse(_aantal.text) ?? 1,
+        aantal: parseDecimalInput(_aantal.text) ?? 1,
         aantalTot: _aantalTotValue,
         prijsExBtw: 0,
       ).aantalLabel;
@@ -1682,13 +1682,13 @@ class _ItemFormSheetState extends State<_ItemFormSheet> {
     if (!_formKey.currentState!.validate()) return;
     final provider = context.read<InvoiceProvider>();
     final prijsExBtw = _preciseExclFromIncl ??
-        roundPrice(double.tryParse(_prijsExcl.text) ?? 0);
+        roundPrice(parseDecimalInput(_prijsExcl.text) ?? 0);
     final aantalTot = _aantalTotValue;
     if (widget.item != null) {
       provider.updateDraftItem(
         widget.item!.copyWith(
           omschrijving: _omschrijving.text.trim(),
-          aantal: double.tryParse(_aantal.text) ?? 1,
+          aantal: parseDecimalInput(_aantal.text) ?? 1,
           aantalTot: aantalTot,
           clearAantalTot: aantalTot == null,
           prijsExBtw: prijsExBtw,
@@ -1698,7 +1698,7 @@ class _ItemFormSheetState extends State<_ItemFormSheet> {
       provider.addDraftItem(
         provider.createItem(
           omschrijving: _omschrijving.text.trim(),
-          aantal: double.tryParse(_aantal.text) ?? 1,
+          aantal: parseDecimalInput(_aantal.text) ?? 1,
           aantalTot: aantalTot,
           prijsExBtw: prijsExBtw,
         ),
@@ -1777,11 +1777,11 @@ class _ItemFormSheetState extends State<_ItemFormSheet> {
                     decoration: InputDecoration(
                       labelText: widget.allowRange ? 'Aantal van *' : 'Aantal *',
                     ),
-                    keyboardType: TextInputType.number,
+                    keyboardType: const TextInputType.numberWithOptions(decimal: true),
                     onChanged: (_) => setState(() {}),
                     validator: (v) {
                       if (v == null || v.isEmpty) return 'Verplicht';
-                      if (double.tryParse(v) == null) return 'Ongeldig';
+                      if (parseDecimalInput(v) == null) return 'Ongeldig';
                       return null;
                     },
                   ),
@@ -1799,13 +1799,13 @@ class _ItemFormSheetState extends State<_ItemFormSheet> {
                         labelText: 'Aantal tot',
                         hintText: 'Optioneel',
                       ),
-                      keyboardType: TextInputType.number,
+                      keyboardType: const TextInputType.numberWithOptions(decimal: true),
                       onChanged: (_) => setState(() {}),
                       validator: (v) {
                         if (v == null || v.trim().isEmpty) return null;
-                        final tot = double.tryParse(v);
+                        final tot = parseDecimalInput(v);
                         if (tot == null) return 'Ongeldig';
-                        final van = double.tryParse(_aantal.text);
+                        final van = parseDecimalInput(_aantal.text);
                         if (van != null && tot <= van) return 'Hoger dan van';
                         return null;
                       },
@@ -1847,7 +1847,7 @@ class _ItemFormSheetState extends State<_ItemFormSheet> {
                     ),
                     validator: (v) {
                       if (v == null || v.isEmpty) return 'Verplicht';
-                      if (double.tryParse(v) == null) return 'Ongeldig';
+                      if (parseDecimalInput(v) == null) return 'Ongeldig';
                       return null;
                     },
                   ),
@@ -1984,7 +1984,7 @@ class _DetailsStep extends StatelessWidget {
               child: TextField(
                 controller: taxRate,
                 decoration: const InputDecoration(labelText: 'BTW (%)'),
-                keyboardType: TextInputType.number,
+                keyboardType: const TextInputType.numberWithOptions(decimal: true),
               ),
             ),
           ],

@@ -96,7 +96,7 @@ lib/
     vehicles/vehicles_screen.dart
     email/email_editor_screen.dart
   utils/
-    price.dart                 Price rounding/formatting at stored precision
+    price.dart                 Price rounding, money display, decimal input parsing
     phone_format.dart          PhonePairFormatter — pairs digits while typing
 functions/
   index.js                     Firebase Cloud Function: sendInvoiceEmail
@@ -185,7 +185,10 @@ to the invoice sequence's. Because an invoice bills an exact quantity, every
 estimated range has to be settled first: `_SettleRangesSheet` asks for a number
 per ranged item, defaulting to the low bound and validated to stay inside the
 span the customer was quoted. Those quantities are applied with
-`clearAantalTot`, so the resulting invoice carries no ranges at all.
+`clearAantalTot`, so the resulting invoice carries no ranges at all. The
+converted invoice is dated the day of the conversion (`issueDate` and
+`clientDatum`), not the day the quote was drawn up — the same rule the workshop
+buffer follows when a vehicle is afgerond.
 
 ### Quantity ranges
 
@@ -218,6 +221,25 @@ booked in (`InvoiceProvider.releaseFromWorkshop`), so a job sitting in the
 buffer for days does not burn a number and leave a gap in the Facturen
 sequence. While buffered, `invoiceNumber` is empty and `Invoice.numberLabel`
 renders it as `Concept` (app bar, vehicle card, PDF, share subject/filename).
+
+The invoice is also *dated* at that moment: `releaseFromWorkshop` stamps
+`issueDate` and `clientDatum` with the day the job is finished, not the day the
+vehicle was booked in — a car can sit in the shop for days and the customer's
+document should carry the completion date.
+
+## Money and Number Input
+
+`formatMoney` (`lib/utils/price.dart`) is the single money formatter: thousands
+grouped with a non-breaking space (`€1 234,56`, `€250 000 000`), so an amount
+never wraps mid-number. `decimals` drops to 0 for the stats/summary tiles and
+`decimalSeparator` is `,` on the PDF (Dutch convention) and `.` on screen.
+`formatAmountRange` builds a quote's span out of it. Covered by
+`test/money_format_test.dart`.
+
+`parseDecimalInput` is the reverse: it reads a typed number with either
+separator (`8,25` and `8.25` both give 8.25), since a Dutch keyboard offers a
+comma while `double.tryParse` only accepts a point. Every numeric field parses
+through it; fields holding decimals use `numberWithOptions(decimal: true)`.
 
 ## Phone Input
 

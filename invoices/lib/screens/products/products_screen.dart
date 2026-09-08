@@ -774,7 +774,7 @@ class _ProductRow extends StatelessWidget {
         mainAxisSize: MainAxisSize.min,
         children: [
           Text(
-            '€${inclPrice.toStringAsFixed(2)} incl.',
+            '${formatMoney(inclPrice, currency: '€')} incl.',
             style: TextStyle(
               color: dimmed ? AppTheme.textSecondary : AppTheme.primary,
               fontWeight: FontWeight.w600,
@@ -1203,7 +1203,7 @@ class _ProductFormState extends State<_ProductForm> {
     if (_updatingPrice) return;
     _preciseExclFromIncl = null;
     _updatingPrice = true;
-    final excl = double.tryParse(_priceExcl.text);
+    final excl = parseDecimalInput(_priceExcl.text);
     if (excl != null) {
       _priceIncl.text = (excl * (1 + widget.taxRate / 100)).toStringAsFixed(2);
     } else if (_priceExcl.text.isEmpty) {
@@ -1215,7 +1215,7 @@ class _ProductFormState extends State<_ProductForm> {
   void _onInclChanged() {
     if (_updatingPrice) return;
     _updatingPrice = true;
-    final incl = double.tryParse(_priceIncl.text);
+    final incl = parseDecimalInput(_priceIncl.text);
     if (incl != null) {
       final excl = roundPrice(incl / (1 + widget.taxRate / 100));
       _preciseExclFromIncl = excl;
@@ -1249,7 +1249,7 @@ class _ProductFormState extends State<_ProductForm> {
       name: _name.text.trim(),
       description: _description.text.trim(),
       price: _preciseExclFromIncl ??
-          roundPrice(double.tryParse(_priceExcl.text) ?? 0),
+          roundPrice(parseDecimalInput(_priceExcl.text) ?? 0),
       unit: _unit.text.trim().isEmpty ? 'stuk' : _unit.text.trim(),
       category: _selectedCategory ?? '',
       subCategory: _selectedCategory == null ? '' : (_selectedSubCategory ?? ''),
@@ -1341,7 +1341,7 @@ class _ProductFormState extends State<_ProductForm> {
                     ),
                     validator: (v) {
                       if (v == null || v.isEmpty) return 'Verplicht';
-                      if (double.tryParse(v) == null) return 'Ongeldig';
+                      if (parseDecimalInput(v) == null) return 'Ongeldig';
                       return null;
                     },
                   ),

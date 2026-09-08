@@ -1,5 +1,6 @@
 import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
+import '../../utils/price.dart';
 import 'package:intl/intl.dart';
 import '../../config/theme.dart';
 import '../../models/invoice.dart';
@@ -238,7 +239,7 @@ class _InvoiceStatsScreenState extends State<InvoiceStatsScreen> {
                                       children: [
                                         TextSpan(
                                           text:
-                                              '$currency${spot.y.toStringAsFixed(0)}',
+                                              formatMoney(spot.y, currency: currency, decimals: 0),
                                           style: TextStyle(
                                             color: AppTheme.onSurface(context),
                                             fontWeight: FontWeight.w700,
@@ -301,7 +302,7 @@ class _InvoiceStatsScreenState extends State<InvoiceStatsScreen> {
                                   }
                                   final label = value >= 1000
                                       ? '$currency${(value / 1000).toStringAsFixed(1)}k'
-                                      : '$currency${value.toStringAsFixed(0)}';
+                                      : formatMoney(value, currency: currency, decimals: 0);
                                   return Text(
                                     label,
                                     style: const TextStyle(
@@ -341,7 +342,7 @@ class _InvoiceStatsScreenState extends State<InvoiceStatsScreen> {
                             child: _StatCard(
                               label: 'Gemiddeld',
                               value:
-                                  '$currency${avgValue.toStringAsFixed(0)}',
+                                  formatMoney(avgValue, currency: currency, decimals: 0),
                               icon: Icons.calculate_outlined,
                               color: AppTheme.primary,
                             ),
@@ -351,7 +352,7 @@ class _InvoiceStatsScreenState extends State<InvoiceStatsScreen> {
                             child: _StatCard(
                               label: 'BTW afdracht',
                               value:
-                                  '$currency${taxTotal.toStringAsFixed(0)}',
+                                  formatMoney(taxTotal, currency: currency, decimals: 0),
                               icon: Icons.account_balance_outlined,
                               color: const Color(0xFFF59E0B),
                             ),
@@ -376,7 +377,7 @@ class _InvoiceStatsScreenState extends State<InvoiceStatsScreen> {
                             child: _StatCard(
                               label: 'Grootste factuur',
                               value: largestInvoice != null
-                                  ? '$currency${largestInvoice.totaalInclBtw.toStringAsFixed(0)}'
+                                  ? formatMoney(largestInvoice.totaalInclBtw, currency: currency, decimals: 0)
                                   : '—',
                               icon: Icons.trending_up_rounded,
                               color: AppTheme.primary,
@@ -483,13 +484,13 @@ class _SummaryRow extends StatelessWidget {
     padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
     child: Row(
       children: [
-        _Cell('Totaal', '$currency${total.toStringAsFixed(0)}',
+        _Cell('Totaal', formatMoney(total, currency: currency, decimals: 0),
             AppTheme.onSurface(context)),
         _divider(context),
-        _Cell('Betaald', '$currency${paid.toStringAsFixed(0)}',
+        _Cell('Betaald', formatMoney(paid, currency: currency, decimals: 0),
             const Color(0xFF10B981)),
         _divider(context),
-        _Cell('Openstaand', '$currency${(total - paid).toStringAsFixed(0)}',
+        _Cell('Openstaand', formatMoney((total - paid), currency: currency, decimals: 0),
             AppTheme.error),
         _divider(context),
         _Cell('Aantal', '$count', AppTheme.onSurfaceVariant(context)),
@@ -852,7 +853,7 @@ class _ClientRow extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.end,
             children: [
               Text(
-                '$currency${amount.toStringAsFixed(0)}',
+                formatMoney(amount, currency: currency, decimals: 0),
                 style: const TextStyle(
                   fontSize: 14,
                   fontWeight: FontWeight.w700,

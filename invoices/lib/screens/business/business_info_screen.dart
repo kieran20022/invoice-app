@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../utils/price.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:provider/provider.dart';
 import '../../config/theme.dart';
@@ -131,7 +132,7 @@ class _BusinessInfoScreenState extends State<BusinessInfoScreen> {
       country: _country.text.trim(),
       logoBase64: existing?.logoBase64,
       currency: _currency.text.trim().isEmpty ? '€' : _currency.text.trim(),
-      defaultTaxRate: double.tryParse(_taxRate.text) ?? 21.0,
+      defaultTaxRate: parseDecimalInput(_taxRate.text) ?? 21.0,
       invoicePrefix: _invoicePrefix.text.trim().isEmpty
           ? 'F'
           : _invoicePrefix.text.trim(),
@@ -314,7 +315,7 @@ class _BusinessInfoScreenState extends State<BusinessInfoScreen> {
                   child: _field(
                     _taxRate,
                     'Standaard BTW (%)',
-                    keyboardType: TextInputType.number,
+                    keyboardType: const TextInputType.numberWithOptions(decimal: true),
                   ),
                 ),
               ],

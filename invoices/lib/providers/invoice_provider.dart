@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:flutter/foundation.dart';
+import 'package:intl/intl.dart';
 import 'package:uuid/uuid.dart';
 import '../models/invoice.dart';
 import '../models/business_info.dart';
@@ -304,8 +305,14 @@ class InvoiceProvider extends ChangeNotifier {
   Future<Invoice> releaseFromWorkshop(Invoice invoice) async {
     if (_userId == null || invoice.status != workshopStatus) return invoice;
 
+    // The invoice is dated the day the job is finished, not the day the
+    // vehicle was booked in — a car can sit in the shop for days, and the
+    // customer's document should carry the date the work was completed.
+    final finishedOn = DateTime.now();
     final released = invoice.copyWith(
       status: 'concept',
+      issueDate: finishedOn,
+      clientDatum: DateFormat('dd-MM-yyyy').format(finishedOn),
       invoiceNumber: invoice.invoiceNumber.isEmpty
           ? await _nextInvoiceNumber(invoice.businessInvoicePrefix)
           : invoice.invoiceNumber,
@@ -330,9 +337,15 @@ class InvoiceProvider extends ChangeNotifier {
       return item.copyWith(aantal: settled, clearAantalTot: true);
     }).toList();
 
+    // An invoice is dated the day it is billed, not the day the quote was
+    // drawn up — a quote may be weeks old by the time the customer accepts it.
+    final convertedOn = DateTime.now();
+
     final invoice = quote.copyWith(
       items: items,
       isQuote: false,
+      issueDate: convertedOn,
+      clientDatum: DateFormat('dd-MM-yyyy').format(convertedOn),
       // The snapshot carried the quote sequence's prefix; it now belongs to
       // the invoice sequence.
       businessInvoicePrefix: invoicePrefix,

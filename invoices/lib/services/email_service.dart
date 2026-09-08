@@ -5,6 +5,7 @@ import 'package:intl/intl.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
 import '../models/invoice.dart';
+import '../utils/price.dart';
 
 class EmailService {
   /// Sends the invoice directly to the native email composer (no share sheet).
@@ -95,7 +96,10 @@ class EmailService {
         )
         .replaceAll(
           '{totaal}',
-          '${invoice.currency}${invoice.totaalInclBtw.toStringAsFixed(2)}',
+          formatMoney(
+            invoice.totaalInclBtw,
+            currency: invoice.currency,
+          ),
         );
 
     return invoice.isQuote

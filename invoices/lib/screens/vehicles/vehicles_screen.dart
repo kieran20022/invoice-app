@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../utils/price.dart';
 import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
@@ -438,7 +439,7 @@ class _VehicleCard extends StatelessWidget {
                           ? 'Factuur verwijderd — tik om opnieuw te beginnen'
                           : '${inv.numberLabel} · $itemCount '
                               '${itemCount == 1 ? 'product' : 'producten'} · '
-                              '${inv.currency}${inv.totaalInclBtw.toStringAsFixed(2)}',
+                              '${formatMoney(inv.totaalInclBtw, currency: inv.currency)}',
                       style: const TextStyle(
                         color: AppTheme.textSecondary,
                         fontSize: 13,
