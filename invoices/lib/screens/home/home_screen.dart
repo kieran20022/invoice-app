@@ -77,39 +77,47 @@ class _HomeScreenState extends State<HomeScreen> {
         ],
       ),
       body: IndexedStack(index: _currentIndex, children: _screens),
-      floatingActionButton: _currentIndex == 0
-          ? Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.end,
-              children: [
-                FloatingActionButton.extended(
-                  heroTag: 'home_new_quote',
-                  onPressed: () => _openCreateInvoice(isQuote: true),
-                  backgroundColor: AppTheme.surf(context),
-                  foregroundColor: AppTheme.primary,
-                  icon: const Icon(Icons.request_quote_outlined),
-                  label: const Text(
-                    'Offerte Maken',
-                    style: TextStyle(fontWeight: FontWeight.w600),
-                  ),
-                ),
-                const SizedBox(height: 10),
-                FloatingActionButton.extended(
-                  heroTag: 'home_new_invoice',
-                  onPressed: _openCreateInvoice,
-                  backgroundColor: AppTheme.primary,
-                  icon: const Icon(Icons.add, color: Colors.white),
-                  label: const Text(
-                    'Nieuwe Factuur',
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontWeight: FontWeight.w600,
+      // The buttons belong to the Facturen tab and should be gone the instant
+      // another tab is picked. Scaffold runs a 200ms transition whenever this
+      // slot goes from a child to null, leaving them on screen after the tab
+      // has already changed, so the slot always holds the same keyed child and
+      // empties itself instead — an unchanged key skips the transition.
+      floatingActionButton: KeyedSubtree(
+        key: const ValueKey('home_fabs'),
+        child: _currentIndex == 0
+            ? Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  FloatingActionButton.extended(
+                    heroTag: 'home_new_quote',
+                    onPressed: () => _openCreateInvoice(isQuote: true),
+                    backgroundColor: AppTheme.surf(context),
+                    foregroundColor: AppTheme.primary,
+                    icon: const Icon(Icons.request_quote_outlined),
+                    label: const Text(
+                      'Offerte Maken',
+                      style: TextStyle(fontWeight: FontWeight.w600),
                     ),
                   ),
-                ),
-              ],
-            )
-          : null,
+                  const SizedBox(height: 10),
+                  FloatingActionButton.extended(
+                    heroTag: 'home_new_invoice',
+                    onPressed: _openCreateInvoice,
+                    backgroundColor: AppTheme.primary,
+                    icon: const Icon(Icons.add, color: Colors.white),
+                    label: const Text(
+                      'Nieuwe Factuur',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+                ],
+              )
+            : const SizedBox.shrink(),
+      ),
       bottomNavigationBar: Container(
         decoration: BoxDecoration(
           border: Border(top: BorderSide(color: AppTheme.borderOf(context))),

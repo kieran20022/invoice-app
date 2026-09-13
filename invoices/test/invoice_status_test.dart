@@ -27,4 +27,17 @@ void main() {
     expect(_invoice('betaald').statusLabel, 'Betaald');
     expect(_invoice('concept').statusLabel, 'Concept');
   });
+
+  // The Facturen tab is ordered by createdAt, so releasing a vehicle from the
+  // workshop (and converting a quote) restamps it to keep the newest number on
+  // top; an ordinary copyWith must leave it alone.
+  test('copyWith can restamp createdAt but keeps it otherwise', () {
+    final invoice = _invoice('werkplaats');
+    final released = invoice.copyWith(
+      status: 'concept',
+      createdAt: DateTime(2026, 3, 4),
+    );
+    expect(released.createdAt, DateTime(2026, 3, 4));
+    expect(invoice.copyWith(status: 'concept').createdAt, invoice.createdAt);
+  });
 }

@@ -307,11 +307,15 @@ class InvoiceProvider extends ChangeNotifier {
 
     // The invoice is dated the day the job is finished, not the day the
     // vehicle was booked in — a car can sit in the shop for days, and the
-    // customer's document should carry the date the work was completed.
+    // customer's document should carry the date the work was completed. It also
+    // *enters* the Facturen tab now, so `createdAt` — what that list is ordered
+    // by — is stamped too; otherwise the job sorts among the invoices that were
+    // made while it sat in the shop, below its own number.
     final finishedOn = DateTime.now();
     final released = invoice.copyWith(
       status: 'concept',
       issueDate: finishedOn,
+      createdAt: finishedOn,
       clientDatum: DateFormat('dd-MM-yyyy').format(finishedOn),
       invoiceNumber: invoice.invoiceNumber.isEmpty
           ? await _nextInvoiceNumber(invoice.businessInvoicePrefix)
@@ -345,6 +349,7 @@ class InvoiceProvider extends ChangeNotifier {
       items: items,
       isQuote: false,
       issueDate: convertedOn,
+      createdAt: convertedOn,
       clientDatum: DateFormat('dd-MM-yyyy').format(convertedOn),
       // The snapshot carried the quote sequence's prefix; it now belongs to
       // the invoice sequence.

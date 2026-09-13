@@ -43,6 +43,10 @@ Clean and professional, Material 3. Primary colour: `#2563EB` (blue).
 - Bottom navigation: Invoices | Vehicles | Products | Settings
 - 4-step Stepper for invoice creation — user can tap back to any previous step.
 - Invoice history shows running totals (total, paid, unpaid) and overdue highlighting.
+- Facturen tab filter chips: Facturen | Concept | Betaald | Offertes — the
+  first lists the invoices, quotes only appear under their own chip. A sort
+  button beside the search field orders by number (high-low, the default) or
+  amount.
 - Invoice numbers auto-generated (e.g. `INV-0001`). Starting number configurable in Settings.
 
 # Technology Stack
@@ -225,7 +229,11 @@ renders it as `Concept` (app bar, vehicle card, PDF, share subject/filename).
 The invoice is also *dated* at that moment: `releaseFromWorkshop` stamps
 `issueDate` and `clientDatum` with the day the job is finished, not the day the
 vehicle was booked in — a car can sit in the shop for days and the customer's
-document should carry the completion date.
+document should carry the completion date. `createdAt` is stamped along with it,
+because the Facturen tab is ordered by that field: it records when the invoice
+*entered* the list, so a released job sits on top rather than among the invoices
+that were made while it was in the shop. Converting a quote
+(`convertToInvoice`) restamps it for the same reason.
 
 ## Money and Number Input
 

@@ -10,6 +10,34 @@ import 'movable_invoice_card.dart';
 import 'invoice_preview_screen.dart';
 import 'invoice_stats_screen.dart';
 
+/// How the list is ordered. The number runs with the sequence, so the default
+/// puts the newest document on top — what the numbers themselves read off the
+/// cards — and the amount is offered for looking a document up.
+enum _Sort {
+  numberDesc('Nummer (hoog-laag)'),
+  numberAsc('Nummer (laag-hoog)'),
+  priceDesc('Bedrag (hoog-laag)'),
+  priceAsc('Bedrag (laag-hoog)');
+
+  const _Sort(this.label);
+  final String label;
+}
+
+/// The sequence number out of `F-0012`, so numbers sort by their sequence
+/// rather than as text. Quotes run their own sequence and are listed on their
+/// own; a document still without a number sorts last.
+int _numberValue(Invoice invoice) {
+  final digits = RegExp(r'(\d+)$').firstMatch(invoice.invoiceNumber)?.group(1);
+  return int.tryParse(digits ?? '') ?? -1;
+}
+
+int _compare(Invoice a, Invoice b, _Sort sort) => switch (sort) {
+      _Sort.numberDesc => _numberValue(b).compareTo(_numberValue(a)),
+      _Sort.numberAsc => _numberValue(a).compareTo(_numberValue(b)),
+      _Sort.priceDesc => b.total.compareTo(a.total),
+      _Sort.priceAsc => a.total.compareTo(b.total),
+    };
+
 class InvoiceHistoryScreen extends StatefulWidget {
   const InvoiceHistoryScreen({super.key});
 
@@ -18,8 +46,9 @@ class InvoiceHistoryScreen extends StatefulWidget {
 }
 
 class _InvoiceHistoryScreenState extends State<InvoiceHistoryScreen> {
-  String _filter = 'alle';
+  String _filter = 'facturen';
   String _search = '';
+  _Sort _sort = _Sort.numberDesc;
 
   /// Marking an invoice paid, swiped right and up (contant) or right and
   /// down (pin). A quote carries no payment state, so it gets neither.
@@ -75,10 +104,13 @@ class _InvoiceHistoryScreenState extends State<InvoiceHistoryScreen> {
     final invoices = provider.invoices.where((inv) {
       if (_filter == 'offerte') {
         if (!inv.isQuote) return false;
+      } else if (_filter == 'facturen') {
+        // "Facturen" is every invoice; quotes live under their own chip.
+        if (inv.isQuote) return false;
       } else if (_filter == 'betaald') {
         // Both paid states — contant and pin — belong under "Betaald".
         if (inv.isQuote || !inv.isPaid) return false;
-      } else if (_filter != 'alle') {
+      } else {
         if (inv.isQuote || inv.status != _filter) return false;
       }
       if (_search.isNotEmpty) {
@@ -88,7 +120,8 @@ class _InvoiceHistoryScreenState extends State<InvoiceHistoryScreen> {
             inv.clientKenteken.toLowerCase().contains(q);
       }
       return true;
-    }).toList();
+    }).toList()
+      ..sort((a, b) => _compare(a, b, _sort));
 
     return Scaffold(
       body: Column(
@@ -98,30 +131,43 @@ class _InvoiceHistoryScreenState extends State<InvoiceHistoryScreen> {
             padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
             child: Column(
               children: [
-                TextField(
-                  decoration: InputDecoration(
-                    hintText: 'Zoeken op naam, kenteken of nummer...',
-                    prefixIcon: const Icon(Icons.search, size: 20),
-                    contentPadding: const EdgeInsets.symmetric(vertical: 10),
-                    fillColor: AppTheme.bg(context),
-                    filled: true,
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(10),
-                      borderSide: BorderSide(color: AppTheme.borderOf(context)),
-                    ),
-                    enabledBorder: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(10),
-                      borderSide: BorderSide(color: AppTheme.borderOf(context)),
-                    ),
-                    focusedBorder: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(10),
-                      borderSide: const BorderSide(
-                        color: AppTheme.primary,
-                        width: 2,
+                Row(
+                  children: [
+                    Expanded(
+                      child: TextField(
+                        decoration: InputDecoration(
+                          hintText: 'Zoeken op naam, kenteken of nummer...',
+                          prefixIcon: const Icon(Icons.search, size: 20),
+                          contentPadding:
+                              const EdgeInsets.symmetric(vertical: 10),
+                          fillColor: AppTheme.bg(context),
+                          filled: true,
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(10),
+                            borderSide:
+                                BorderSide(color: AppTheme.borderOf(context)),
+                          ),
+                          enabledBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(10),
+                            borderSide:
+                                BorderSide(color: AppTheme.borderOf(context)),
+                          ),
+                          focusedBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(10),
+                            borderSide: const BorderSide(
+                              color: AppTheme.primary,
+                              width: 2,
+                            ),
+                          ),
+                        ),
+                        onChanged: (v) => setState(() => _search = v),
                       ),
                     ),
-                  ),
-                  onChanged: (v) => setState(() => _search = v),
+                    _SortButton(
+                      sort: _sort,
+                      onChanged: (s) => setState(() => _sort = s),
+                    ),
+                  ],
                 ),
                 const SizedBox(height: 10),
                 SingleChildScrollView(
@@ -129,10 +175,10 @@ class _InvoiceHistoryScreenState extends State<InvoiceHistoryScreen> {
                   child: Row(
                     children: [
                       _FilterChip(
-                        'alle',
-                        'Alle',
+                        'facturen',
+                        'Facturen',
                         _filter,
-                        () => setState(() => _filter = 'alle'),
+                        () => setState(() => _filter = 'facturen'),
                       ),
                       _FilterChip(
                         'concept',
@@ -742,13 +788,48 @@ class _SettleRangesSheetState extends State<_SettleRangesSheet> {
   }
 }
 
+/// Picks the list order. Sits beside the search field rather than among the
+/// filter chips, which scroll sideways and would push it off the row.
+class _SortButton extends StatelessWidget {
+  final _Sort sort;
+  final ValueChanged<_Sort> onChanged;
+  const _SortButton({required this.sort, required this.onChanged});
+
+  @override
+  Widget build(BuildContext context) {
+    return PopupMenuButton<_Sort>(
+      icon: const Icon(Icons.sort),
+      tooltip: 'Sorteren',
+      initialValue: sort,
+      onSelected: onChanged,
+      itemBuilder: (_) => [
+        for (final option in _Sort.values)
+          PopupMenuItem(
+            value: option,
+            child: Row(
+              children: [
+                Icon(
+                  option == sort ? Icons.check : null,
+                  size: 18,
+                  color: AppTheme.primary,
+                ),
+                const SizedBox(width: 8),
+                Text(option.label),
+              ],
+            ),
+          ),
+      ],
+    );
+  }
+}
+
 class _EmptyState extends StatelessWidget {
   final String filter, search;
   const _EmptyState({required this.filter, required this.search});
 
   @override
   Widget build(BuildContext context) {
-    final isFiltered = filter != 'alle' || search.isNotEmpty;
+    final isFiltered = filter != 'facturen' || search.isNotEmpty;
     return Center(
       child: Padding(
         padding: const EdgeInsets.all(32),

@@ -303,6 +303,7 @@ class Invoice {
     String? status,
     double? taxRate,
     String? currency,
+    DateTime? createdAt,
     bool? isQuote,
     bool? isDamageReport,
   }) =>
@@ -335,7 +336,7 @@ class Invoice {
         status: status ?? this.status,
         taxRate: taxRate ?? this.taxRate,
         currency: currency ?? this.currency,
-        createdAt: createdAt,
+        createdAt: createdAt ?? this.createdAt,
         isQuote: isQuote ?? this.isQuote,
         isDamageReport: isDamageReport ?? this.isDamageReport,
       );
