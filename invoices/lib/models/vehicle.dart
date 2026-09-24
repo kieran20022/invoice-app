@@ -1,3 +1,15 @@
+/// The colour a licence plate is issued in. Yellow is the default: a plate
+/// stored before the field existed is a yellow one.
+enum PlateColor {
+  yellow,
+  blue;
+
+  static PlateColor fromName(Object? name) =>
+      name == blue.name ? blue : yellow;
+
+  String get label => this == blue ? 'Blauw' : 'Geel';
+}
+
 /// A vehicle currently in the shop, tied to the invoice being built for it.
 class Vehicle {
   final String id;
@@ -12,6 +24,11 @@ class Vehicle {
 
   /// Licence plate — mirrors the invoice's `clientKenteken`.
   final String plate;
+
+  /// Colour of the plate: yellow for a bromfiets, blue for a snorfiets.
+  /// Cosmetic — it only styles the plate badge. Vehicles booked in before
+  /// the field existed read back as yellow.
+  final PlateColor plateColor;
 
   /// Odometer reading as typed — optional, mirrors the invoice's
   /// `clientKmstand`. Empty when it was not filled in.
@@ -28,6 +45,7 @@ class Vehicle {
     required this.phone,
     this.name = '',
     required this.plate,
+    this.plateColor = PlateColor.yellow,
     this.kmstand = '',
     required this.invoiceId,
     required this.createdAt,
@@ -37,6 +55,7 @@ class Vehicle {
         'phone': phone,
         'name': name,
         'plate': plate,
+        'plateColor': plateColor.name,
         'kmstand': kmstand,
         'invoiceId': invoiceId,
         'createdAt': createdAt.toIso8601String(),
@@ -49,6 +68,7 @@ class Vehicle {
         // number became the primary field.
         name: map['name'] ?? map['ownerName'] ?? '',
         plate: map['plate'] ?? '',
+        plateColor: PlateColor.fromName(map['plateColor']),
         kmstand: map['kmstand'] ?? '',
         invoiceId: map['invoiceId'] ?? '',
         createdAt:
@@ -59,6 +79,7 @@ class Vehicle {
     String? phone,
     String? name,
     String? plate,
+    PlateColor? plateColor,
     String? kmstand,
     String? invoiceId,
   }) =>
@@ -67,6 +88,7 @@ class Vehicle {
         phone: phone ?? this.phone,
         name: name ?? this.name,
         plate: plate ?? this.plate,
+        plateColor: plateColor ?? this.plateColor,
         kmstand: kmstand ?? this.kmstand,
         invoiceId: invoiceId ?? this.invoiceId,
         createdAt: createdAt,

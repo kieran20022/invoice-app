@@ -173,6 +173,7 @@ class _VehiclesScreenState extends State<VehiclesScreen> {
           phone: result.phone,
           name: result.name,
           plate: result.plate,
+          plateColor: result.plateColor,
           kmstand: result.kmstand,
         ),
       );
@@ -192,6 +193,7 @@ class _VehiclesScreenState extends State<VehiclesScreen> {
         phone: result.phone,
         name: result.name,
         plate: result.plate,
+        plateColor: result.plateColor,
         kmstand: result.kmstand,
         invoiceId: invoice.id,
         createdAt: DateTime.now(),
@@ -430,7 +432,10 @@ class _VehicleCard extends StatelessWidget {
                           ),
                         ),
                         const SizedBox(width: 8),
-                        _PlateBadge(plate: vehicle.plate),
+                        _PlateBadge(
+                          plate: vehicle.plate,
+                          color: vehicle.plateColor,
+                        ),
                       ],
                     ),
                     const SizedBox(height: 4),
@@ -485,24 +490,31 @@ class _VehicleCard extends StatelessWidget {
   }
 }
 
-/// Licence plate, styled after a Dutch number plate.
+/// Licence plate, styled after a Dutch number plate — yellow for a bromfiets,
+/// blue (with white lettering) for a snorfiets.
 class _PlateBadge extends StatelessWidget {
   final String plate;
-  const _PlateBadge({required this.plate});
+  final PlateColor color;
+  const _PlateBadge({required this.plate, this.color = PlateColor.yellow});
+
+  static const _yellow = Color(0xFFFFD700);
+  static const _blue = Color(0xFF1D4FD8);
+  static const _dark = Color(0xFF1E293B);
 
   @override
   Widget build(BuildContext context) {
+    final isBlue = color == PlateColor.blue;
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
       decoration: BoxDecoration(
-        color: const Color(0xFFFFD700),
+        color: isBlue ? _blue : _yellow,
         borderRadius: BorderRadius.circular(4),
-        border: Border.all(color: const Color(0xFF1E293B)),
+        border: Border.all(color: _dark),
       ),
       child: Text(
         plate,
-        style: const TextStyle(
-          color: Color(0xFF1E293B),
+        style: TextStyle(
+          color: isBlue ? Colors.white : _dark,
           fontWeight: FontWeight.w800,
           fontSize: 12,
           letterSpacing: 1,
@@ -518,8 +530,15 @@ class _VehicleFormResult {
   final String phone;
   final String name;
   final String plate;
+  final PlateColor plateColor;
   final String kmstand;
-  const _VehicleFormResult(this.phone, this.name, this.plate, this.kmstand);
+  const _VehicleFormResult(
+    this.phone,
+    this.name,
+    this.plate,
+    this.plateColor,
+    this.kmstand,
+  );
 }
 
 class _VehicleFormSheet extends StatefulWidget {
@@ -536,6 +555,7 @@ class _VehicleFormSheetState extends State<_VehicleFormSheet> {
   final _plate = TextEditingController();
   final _kmstand = TextEditingController();
   final _name = TextEditingController();
+  PlateColor _plateColor = PlateColor.yellow;
 
   // Enter walks the fields in order and submits from the last one.
   final _plateFocus = FocusNode();
@@ -549,6 +569,7 @@ class _VehicleFormSheetState extends State<_VehicleFormSheet> {
     if (v != null) {
       _phone.text = PhonePairFormatter.format(v.phone);
       _plate.text = v.plate;
+      _plateColor = v.plateColor;
       _kmstand.text = v.kmstand;
       _name.text = v.name;
     }
@@ -575,6 +596,7 @@ class _VehicleFormSheetState extends State<_VehicleFormSheet> {
         _phone.text.replaceAll(' ', '').trim(),
         _name.text.trim(),
         _plate.text.trim().toUpperCase(),
+        _plateColor,
         _kmstand.text.trim(),
       ),
     );
@@ -632,18 +654,33 @@ class _VehicleFormSheetState extends State<_VehicleFormSheet> {
               onFieldSubmitted: (_) => _plateFocus.requestFocus(),
             ),
             const SizedBox(height: 12),
-            TextFormField(
-              controller: _plate,
-              focusNode: _plateFocus,
-              textCapitalization: TextCapitalization.characters,
-              textInputAction: TextInputAction.next,
-              decoration: const InputDecoration(
-                labelText: 'Kenteken',
-                prefixIcon: Icon(Icons.confirmation_number_outlined),
-              ),
-              validator: (v) =>
-                  (v == null || v.trim().isEmpty) ? 'Vul een kenteken in' : null,
-              onFieldSubmitted: (_) => _kmstandFocus.requestFocus(),
+            Row(
+              // The colour belongs to the plate, so it sits beside it. The
+              // field keeps whatever width is left over.
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Expanded(
+                  child: TextFormField(
+                    controller: _plate,
+                    focusNode: _plateFocus,
+                    textCapitalization: TextCapitalization.characters,
+                    textInputAction: TextInputAction.next,
+                    decoration: const InputDecoration(
+                      labelText: 'Kenteken',
+                      prefixIcon: Icon(Icons.confirmation_number_outlined),
+                    ),
+                    validator: (v) => (v == null || v.trim().isEmpty)
+                        ? 'Vul een kenteken in'
+                        : null,
+                    onFieldSubmitted: (_) => _kmstandFocus.requestFocus(),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                _PlateColorPicker(
+                  selected: _plateColor,
+                  onChanged: (c) => setState(() => _plateColor = c),
+                ),
+              ],
             ),
             const SizedBox(height: 12),
             TextFormField(
@@ -678,6 +715,61 @@ class _VehicleFormSheetState extends State<_VehicleFormSheet> {
               ),
             ),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Yellow / blue plate choice, as two swatches sized to sit beside the
+/// Kenteken field rather than under it.
+class _PlateColorPicker extends StatelessWidget {
+  final PlateColor selected;
+  final ValueChanged<PlateColor> onChanged;
+
+  const _PlateColorPicker({required this.selected, required this.onChanged});
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        for (final color in PlateColor.values) ...[
+          if (color != PlateColor.values.first) const SizedBox(width: 6),
+          _swatch(context, color),
+        ],
+      ],
+    );
+  }
+
+  Widget _swatch(BuildContext context, PlateColor color) {
+    final isSelected = color == selected;
+    final isBlue = color == PlateColor.blue;
+    return Tooltip(
+      message: color.label,
+      child: InkWell(
+        onTap: () => onChanged(color),
+        borderRadius: BorderRadius.circular(8),
+        child: Container(
+          width: 44,
+          height: 52,
+          decoration: BoxDecoration(
+            color: isBlue ? const Color(0xFF1D4FD8) : const Color(0xFFFFD700),
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(
+              color: isSelected
+                  ? AppTheme.primary
+                  : AppTheme.borderOf(context),
+              width: isSelected ? 2.5 : 1,
+            ),
+          ),
+          child: isSelected
+              ? Icon(
+                  Icons.check,
+                  size: 20,
+                  color: isBlue ? Colors.white : const Color(0xFF1E293B),
+                )
+              : null,
         ),
       ),
     );

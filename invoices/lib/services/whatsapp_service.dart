@@ -60,6 +60,10 @@ class WhatsappService {
 
   /// Opens [phone]'s WhatsApp chat with the invoice PDF attached.
   ///
+  /// [text] no longer rides along on the intent: WhatsApp discards a caption
+  /// sent with a document, and sending one costs the page preview of the PDF
+  /// (see MainActivity). The caller puts the message on the clipboard.
+  ///
   /// Throws [PlatformException] when WhatsApp is missing or refuses the intent,
   /// and [ArgumentError] when [phone] is not a usable number.
   static Future<void> shareInvoiceToNumber({

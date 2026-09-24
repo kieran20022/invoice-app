@@ -1,5 +1,6 @@
 import 'dart:io';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_email_sender/flutter_email_sender.dart';
 import 'package:intl/intl.dart';
 import 'package:path_provider/path_provider.dart';
@@ -42,8 +43,17 @@ class EmailService {
     await FlutterEmailSender.send(email);
   }
 
+  /// The share sheet handled by MainActivity — see [shareInvoice].
+  static const _shareChannel = MethodChannel('com.bliksemit.Invoices/share');
+
   /// Share PDF via the generic share sheet (fallback / WhatsApp etc.).
   /// Text is formatted as "subject\n\nbody" so WhatsApp shows it cleanly.
+  ///
+  /// On Android this goes through our own channel rather than share_plus, so
+  /// the receiving app keeps read access to the PDF after the share sheet is
+  /// gone. Without that WhatsApp shows the document as a bare filename: it
+  /// renders the page preview on a background worker, once the intent's own
+  /// grant has already lapsed. Everywhere else share_plus does the sharing.
   static Future<void> shareInvoice({
     required Invoice invoice,
     required Uint8List pdfBytes,
@@ -56,13 +66,38 @@ class EmailService {
     // (XFile.fromData does not reliably propagate the name on Android).
     final tempDir = await getTemporaryDirectory();
     final file = File('${tempDir.path}/${invoice.pdfFilename}');
-    await file.writeAsBytes(pdfBytes);
+    await file.writeAsBytes(pdfBytes, flush: true);
+
+    if (await _shareViaChannel(file.path, subject, shareText)) return;
 
     await Share.shareXFiles(
       [XFile(file.path, mimeType: 'application/pdf')],
       subject: subject,
       text: shareText,
     );
+  }
+
+  /// Hands the file to MainActivity's share sheet. False when this is not a
+  /// platform it handles, or the call failed — share_plus then takes over.
+  static Future<bool> _shareViaChannel(
+    String filePath,
+    String subject,
+    String text,
+  ) async {
+    if (kIsWeb || !Platform.isAndroid) return false;
+    try {
+      return await _shareChannel.invokeMethod<bool>('shareFile', {
+            'filePath': filePath,
+            'mimeType': 'application/pdf',
+            'subject': subject,
+            'text': text,
+          }) ??
+          false;
+    } on PlatformException {
+      return false;
+    } on MissingPluginException {
+      return false;
+    }
   }
 
   /// Replace template variables with actual invoice values.

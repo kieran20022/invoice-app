@@ -4,6 +4,10 @@
     <!-- image_picker: Android 12 and below -->
     <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE"
         android:maxSdkVersion="32"/>
+    <!-- Saving an export to Downloads: Android 9 and below only. From
+         Android 10 it goes through MediaStore, which needs no permission. -->
+    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE"
+        android:maxSdkVersion="28"/>
 
     <application
         android:label="Invoices"

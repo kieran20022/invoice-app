@@ -13,7 +13,8 @@ Invoice app. Used for generating invoices for clients. Simple interface where us
 7. Invoice history: List of all invoices with search, filter by status (draft/paid/quotes), and revenue stats. A card is swiped right and up for Contant Betaald, right and down for Pin Betaald, and left to delete.
 8. Products: Saved product/service list with name, description, price, unit. Organised in categories and optional sub-categories (created when adding a product, or in bulk by long-pressing products in one category and selecting them). Quickly added to invoices.
 9. Custom one-time products: Custom items added to invoices without saving to product list.
-10. Voertuigen: Vehicles currently in the shop, each tied to a "current" invoice. Adding a vehicle (phone number + optional name + plate) immediately creates its invoice in the workshop buffer; tapping the vehicle opens that invoice at the Producten step, and closing the screen persists the items added. The card shows the name when there is one, the number otherwise. The ⋮ menu has "Concept delen" (shares the still-unnumbered PDF), "Afronden" (takes the vehicle out of the shop, numbers its invoice and releases it into the Facturen tab), "Afronden en delen" (the same, then opens the share sheet for the numbered invoice) and "Verwijderen" (throws the record away — vehicle *and* invoice — so nothing reaches the Facturen tab and no invoice number is used).
+10. Voertuigen: Vehicles currently in the shop, each tied to a "current" invoice. Adding a vehicle (phone number + optional name + plate, geel or blauw)
+    immediately creates its invoice in the workshop buffer; tapping the vehicle opens that invoice at the Producten step, and closing the screen persists the items added. The card shows the name when there is one, the number otherwise. The ⋮ menu has "Concept delen" (shares the still-unnumbered PDF), "Afronden" (takes the vehicle out of the shop, numbers its invoice and releases it into the Facturen tab), "Afronden en delen" (the same, then opens the share sheet for the numbered invoice) and "Verwijderen" (throws the record away — vehicle *and* invoice — so nothing reaches the Facturen tab and no invoice number is used).
 11. Direct WhatsApp send: When the invoice carries a client phone number, a green "Direct naar <nummer> via WhatsApp" option appears on `email_editor_screen.dart`, opening that contact's chat with the PDF attached. Android only (needs an explicit intent); hidden elsewhere and when WhatsApp is not installed. NOTE: nothing currently navigates to `EmailEditorScreen`, so this option has no entry point in the running app.
 12. Offertes: An "Offerte Maken" button next to "Nieuwe Factuur" on the
     Facturen tab runs the same 4-step flow, but the document is a quote: it
@@ -26,6 +27,11 @@ Invoice app. Used for generating invoices for clients. Simple interface where us
     number: `Offerte - Jan - AB-12-CD.pdf`. The badge on its card in the
     Facturen tab converts it into a real invoice.
 13. Send email: Share invoice PDF with subject and message via native share sheet (email clients receive subject + body; WhatsApp receives `*Subject*\n\nMessage`). Optional server-side sending via Firebase Cloud Functions + SMTP.
+14. Inkomsten overzicht: An Excel (`.xlsx`) export of a year's invoices,
+    downloaded from the ⊞ button in the stats screen. Lists every invoice of
+    the chosen year with its VAT split and totals each quarter beside it,
+    cumulative through the year. It is saved to the device's Downloads rather
+    than shared.
 
 # App Workflow
 
@@ -82,6 +88,10 @@ lib/
     storage_service.dart       Firebase Storage upload/delete for logo
     pdf_service.dart           3 PDF templates (Modern, Classic, Minimal)
     email_service.dart         shareInvoice() via Share.shareXFiles + cloud function
+    excel_service.dart         Inkomsten overzicht: xlsx built as raw OOXML
+    download_service.dart      Saves an export to Downloads (per-platform)
+    download_service_io.dart   Android MediaStore channel / desktop folder
+    download_service_web.dart  Browser download via a blob URL
     whatsapp_service.dart      Direct-to-number WhatsApp share via platform channel
   providers/
     auth_provider.dart         Wraps FirebaseAuth.authStateChanges()
@@ -132,6 +142,12 @@ users/{uid}/
 Invoice number is auto-incremented via a Firestore transaction on `nextInvoiceNumber` in the business settings document; quotes use `nextQuoteNumber` in the same document.
 
 ## PDF Templates
+
+Documents are written as **PDF 1.4**, not the `pdf` package's 1.5 default:
+1.5 stores the cross-reference as a compressed stream, which WhatsApp's
+document thumbnailer does not read — it then shows the shared invoice as a
+bare filename instead of a page preview. A classic xref table is what ordinary
+PDFs carry and nothing here needs 1.5.
 
 Three templates in `pdf_service.dart`. All use `const PdfColor(r, g, b)` float constructors — `PdfColor.fromInt()` is not a const constructor and cannot be used in const contexts.
 
@@ -235,6 +251,55 @@ because the Facturen tab is ordered by that field: it records when the invoice
 that were made while it was in the shop. Converting a quote
 (`convertToInvoice`) restamps it for the same reason.
 
+## Inkomsten Overzicht (Excel)
+
+`ExcelService` (`lib/services/excel_service.dart`) builds the yearly income
+overview as an `.xlsx`. It is reached from the grid button in the stats
+screen's app bar, which offers every year that has invoices (plus the current
+one, even when empty).
+
+The file is **downloaded, not shared**: an overview is opened in a spreadsheet
+later rather than sent to someone, so it goes to the device's Downloads and a
+snackbar says where it landed. `DownloadService`
+(`lib/services/download_service.dart`) picks the way per platform through a
+conditional export — Android's MediaStore over the `files` channel, the
+browser's own download on web, the Downloads folder on desktop.
+
+The workbook is written as raw OOXML — six small XML parts zipped with
+`archive` — rather than through a spreadsheet package: the parts are short, and
+writing them here keeps the currency/date formats and the quarter block under
+our own control without pulling in a dependency.
+
+- **The list** (columns A-J, one row per invoice): number, date, client,
+  kenteken, km stand, ex. VAT, VAT %, VAT, incl. VAT and how it was settled.
+  A totals row closes the list.
+- **Paid invoices only.** An open invoice is not income, so it is left off
+  entirely rather than listed as outstanding; quotes and the workshop buffer
+  never reach the overview either. The last column therefore only ever names a
+  payment method.
+- **Dated and ordered on the payment date** (`Invoice.paymentDate`), not the
+  issue date: income counts on the day the money came in, so an invoice
+  written in December and paid in January belongs to January — and to the new
+  year's overview. Within one day the rows run by invoice number, compared by
+  its sequence rather than as text so `F9` sorts before `F10`. An invoice with
+  no payment stamp (settled before the stamp existed) falls back to its issue
+  date.
+- **The quarter block** (columns L-S, beside the first five rows): Q1-Q4 and a
+  year total, each with ex. VAT / VAT / incl. VAT, an invoice count, and a
+  cumulative running through the year.
+- **The sums are formulas**, `SUMIFS` over the date column rather than baked-in
+  numbers, so correcting an amount or a date in the list updates the quarters.
+- Rows are collected per row number and emitted in order: on a year with fewer
+  than four invoices the quarter block runs past the totals row, and Excel
+  rejects a sheet whose rows are out of order.
+- Dates are Excel serials counted **in UTC** — a local difference across the
+  start of summer time is 23 hours and would round the date back a day.
+- A repeated export does not overwrite the earlier one: it becomes
+  "Inkomsten 2025 (1).xlsx", the way a browser numbers a repeat download.
+  MediaStore does this itself; the other platforms do it in code.
+
+Covered by `test/income_overview_test.dart`.
+
 ## Money and Number Input
 
 `formatMoney` (`lib/utils/price.dart`) is the single money formatter: thousands
@@ -250,6 +315,15 @@ comma while `double.tryParse` only accepts a point. Every numeric field parses
 through it; fields holding decimals use `numberWithOptions(decimal: true)`.
 
 ## Invoice States
+
+`paidAt` records *when* an invoice was settled. It is stamped by
+`FirestoreService.updateInvoiceStatus`, the one write both the card's swipe and
+the preview's menu go through, and cleared again when an invoice moves back out
+of a paid state — `Invoice.paidAtFor(status)` decides which. `paymentDate` is
+what to read: `paidAt`, or the issue date when there is none (an open invoice,
+or one settled before the stamp existed). The Inkomsten overzicht dates and
+orders by it.
+
 
 `status` carries how an invoice was settled, not just that it was:
 `Invoice.paidCash` (`'contant'`) and `Invoice.paidCard` (`'pin'`) next to
@@ -315,6 +389,22 @@ tracks the caret by counting the digits ahead of it rather than its raw offset,
 so inserting mid-number does not throw the cursor to the end. Covered by
 `test/phone_pair_test.dart`.
 
+## Saving to Downloads (Android)
+
+An app cannot write to the public Downloads by opening a path, so the export
+goes through a second channel (`com.bliksemit.Invoices/files`, method
+`saveToDownloads`) in the same MainActivity:
+
+- **Android 10+** writes through `MediaStore.Downloads` with `IS_PENDING` set
+  while the bytes go in — no permission needed, and MediaStore numbers a
+  repeated filename itself. The name it actually stored is read back and
+  returned, so the snackbar does not claim a name it did not use.
+- **Android 9 and below** has no MediaStore Downloads collection: the file is
+  written straight into the public directory, which needs
+  `WRITE_EXTERNAL_STORAGE` (declared with `maxSdkVersion="28"`). The permission
+  is requested and the save resumed from `onRequestPermissionsResult`; both
+  outcomes answer the channel call, so it never hangs on a dismissed dialog.
+
 ## Direct WhatsApp Send
 
 The share sheet cannot preselect a recipient, so sending to a known number uses
@@ -339,7 +429,34 @@ copied to the clipboard for the user to paste — same as the plain share flow.
 
 ## Email / Share
 
-`EmailService.shareInvoice()` uses `Share.shareXFiles` (share_plus 10.1.4 static API — no `SharePlus`/`ShareParams` classes in this version):
+On **Android** `EmailService.shareInvoice()` opens the share sheet through our
+own channel (`com.bliksemit.Invoices/share`, method `shareFile` in
+MainActivity) instead of share_plus. The difference that matters is the URI
+permission: `FLAG_GRANT_READ_URI_PERMISSION` on the intent lasts only as long
+as the activity that received it, while WhatsApp renders the PDF's page
+preview on a background worker afterwards — with only the intent flag it is
+left with the filename and no preview. MainActivity therefore also calls
+`grantUriPermission` for every package that resolves the send intent (resolved
+against the plain intent, not the chooser, which resolves to the system picker
+alone). The direct-to-number send grants the same way.
+
+Two things about the intent decide whether WhatsApp shows a page preview of
+the PDF or only its filename:
+
+- **No caption for WhatsApp.** A send carrying a document *and* `EXTRA_TEXT`
+  is a captioned share, which WhatsApp lists as a bare filename; the document
+  alone gets the preview. `EXTRA_REPLACEMENT_EXTRAS` on the chooser drops the
+  text for the WhatsApp packages only, so every other app in the sheet still
+  gets the subject and body. Nothing is lost — WhatsApp discards the caption
+  regardless, which is why the message goes to the clipboard to paste. The
+  direct-to-number send leaves the text off for the same reason.
+- **The document as `ClipData` too**, not only `EXTRA_STREAM`: that is how a
+  file manager hands a document over, and it carries the name and type with
+  the attachment instead of leaving the receiver to query for them.
+
+Elsewhere, and if the channel call fails, it falls back to `Share.shareXFiles`
+(share_plus 10.1.4 static API — no `SharePlus`/`ShareParams` classes in this
+version):
 
 ```dart
 Share.shareXFiles([XFile.fromData(pdfBytes, ...)], subject: subject, text: text);

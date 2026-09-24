@@ -276,7 +276,12 @@ class _InvoicePreviewScreenState extends State<InvoicePreviewScreen> {
       }
     } else {
       await context.read<InvoiceProvider>().updateStatus(_invoice.id, action);
-      setState(() => _invoice = _invoice.copyWith(status: action));
+      final paidAt = Invoice.paidAtFor(action);
+      setState(() => _invoice = _invoice.copyWith(
+            status: action,
+            paidAt: paidAt,
+            clearPaidAt: paidAt == null,
+          ));
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(

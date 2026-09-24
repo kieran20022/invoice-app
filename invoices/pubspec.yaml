@@ -37,6 +37,12 @@ dependencies:
   uuid: ^4.5.0
   intl: ^0.20.0
   share_plus: ^10.1.0
+
+  # Excel (xlsx) export — the workbook XML is written by hand, this only zips it
+  archive: ^4.0.0
+
+  # Browser download of an export (web build only)
+  web: ^1.1.0
   fl_chart: ^0.70.0
   flutter_email_sender: ^6.0.3
 

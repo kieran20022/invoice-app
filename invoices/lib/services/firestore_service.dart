@@ -229,13 +229,20 @@ class FirestoreService {
     }
   }
 
+  /// Moves an invoice into [status], stamping when it was paid. The stamp is
+  /// what the income overview dates and orders by, so it is written with the
+  /// status rather than left to be inferred later; moving back out of a paid
+  /// state clears it.
   Future<void> updateInvoiceStatus(String userId, String invoiceId, String status) async {
     await _db
         .collection('users')
         .doc(userId)
         .collection('invoices')
         .doc(invoiceId)
-        .update({'status': status});
+        .update({
+      'status': status,
+      'paidAt': Invoice.paidAtFor(status)?.toIso8601String(),
+    });
   }
 
   Future<void> deleteInvoice(String userId, String invoiceId) async {

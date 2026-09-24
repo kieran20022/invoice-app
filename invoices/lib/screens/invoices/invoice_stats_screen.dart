@@ -4,6 +4,7 @@ import '../../utils/price.dart';
 import 'package:intl/intl.dart';
 import '../../config/theme.dart';
 import '../../models/invoice.dart';
+import '../../services/excel_service.dart';
 
 String? _invoiceCount(int count) =>
     count == 0 ? null : '$count ${count == 1 ? 'factuur' : 'facturen'}';
@@ -103,6 +104,83 @@ class _InvoiceStatsScreenState extends State<InvoiceStatsScreen> {
         ),
       ),
     );
+  }
+
+  /// Offers a year and downloads it as the Inkomsten overzicht: an Excel file
+  /// listing that year's invoices with the quarter totals beside them.
+  Future<void> _downloadIncomeOverview(BuildContext context) async {
+    final years = ExcelService.availableYears(widget.allInvoices);
+    final year = await showModalBottomSheet<int>(
+      context: context,
+      backgroundColor: AppTheme.surf(context),
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+      ),
+      builder: (ctx) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Padding(
+              padding: EdgeInsets.fromLTRB(20, 20, 20, 4),
+              child: Text(
+                'Inkomsten overzicht',
+                style: TextStyle(fontSize: 17, fontWeight: FontWeight.w700),
+              ),
+            ),
+            const Padding(
+              padding: EdgeInsets.fromLTRB(20, 0, 20, 12),
+              child: Text(
+                'Excel-bestand met alle facturen van het jaar en de totalen '
+                'per kwartaal. Wordt opgeslagen in Downloads.',
+                style: TextStyle(fontSize: 13, color: AppTheme.textSecondary),
+              ),
+            ),
+            const Divider(height: 1),
+            ...years.map((y) {
+              final count =
+                  ExcelService.invoicesForYear(widget.allInvoices, y).length;
+              return ListTile(
+                leading: const Icon(
+                  Icons.table_chart_outlined,
+                  color: AppTheme.primary,
+                ),
+                title: Text(
+                  '$y',
+                  style: const TextStyle(fontWeight: FontWeight.w600),
+                ),
+                subtitle: Text(_invoiceCount(count) ?? 'Geen facturen'),
+                trailing: const Icon(Icons.download_outlined, size: 20),
+                onTap: () => Navigator.pop(ctx, y),
+              );
+            }),
+            const SizedBox(height: 8),
+          ],
+        ),
+      ),
+    );
+    if (year == null || !context.mounted) return;
+
+    final messenger = ScaffoldMessenger.of(context);
+    try {
+      final location = await ExcelService.download(
+        invoices: widget.allInvoices,
+        year: year,
+        businessName: widget.allInvoices.isEmpty
+            ? ''
+            : widget.allInvoices.first.businessName,
+      );
+      messenger.showSnackBar(
+        SnackBar(
+          content: Text('Opgeslagen: $location'),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    } catch (e) {
+      messenger.showSnackBar(
+        SnackBar(content: Text('Downloaden mislukt: $e')),
+      );
+    }
   }
 
   @override
@@ -219,6 +297,13 @@ class _InvoiceStatsScreenState extends State<InvoiceStatsScreen> {
         backgroundColor: AppTheme.surf(context),
         surfaceTintColor: Colors.transparent,
         elevation: 0,
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.grid_on_outlined),
+            tooltip: 'Inkomsten overzicht',
+            onPressed: () => _downloadIncomeOverview(context),
+          ),
+        ],
       ),
       body: Column(
         children: [

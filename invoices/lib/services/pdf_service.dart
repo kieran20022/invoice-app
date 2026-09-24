@@ -37,7 +37,15 @@ class PdfService {
     Invoice invoice, {
     Uint8List? logoBytes,
   }) async {
-    final doc = pw.Document(theme: await _theme());
+    // PDF 1.4 rather than the package's 1.5 default: 1.5 writes the
+    // cross-reference as a compressed stream, and WhatsApp's document
+    // thumbnailer does not read those — it falls back to showing the bare
+    // filename instead of a page preview. A classic xref table is what
+    // ordinary PDFs carry, and nothing here needs 1.5.
+    final doc = pw.Document(
+      theme: await _theme(),
+      version: PdfVersion.pdf_1_4,
+    );
 
     doc.addPage(
       pw.MultiPage(

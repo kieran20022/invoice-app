@@ -100,6 +100,11 @@ class Invoice {
   final String notes;
   final String template;
   final String status;
+
+  /// When the invoice was marked paid. Null while it is unpaid, and null on
+  /// invoices settled before this was recorded — [paymentDate] falls back to
+  /// the issue date for those.
+  final DateTime? paidAt;
   final double taxRate;
   final String currency;
   final DateTime createdAt;
@@ -139,6 +144,7 @@ class Invoice {
     this.notes = '',
     this.template = 'classic',
     this.status = 'concept',
+    this.paidAt,
     this.taxRate = 21.0,
     this.currency = '€',
     required this.createdAt,
@@ -165,11 +171,25 @@ class Invoice {
   /// Paid by card (pin).
   static const String paidCard = 'pin';
 
-  /// Whether the invoice is settled, whichever way it was paid. `'betaald'`
-  /// is the older state, from before the payment method was recorded, and
-  /// still counts.
-  bool get isPaid =>
+  /// Whether [status] is a settled one, whichever way it was paid.
+  /// `'betaald'` is the older state, from before the payment method was
+  /// recorded, and still counts.
+  static bool isPaidStatus(String status) =>
       status == 'betaald' || status == paidCash || status == paidCard;
+
+  /// Whether the invoice is settled.
+  bool get isPaid => isPaidStatus(status);
+
+  /// The [paidAt] stamp a move to [status] should carry: moving into a paid
+  /// state records the moment, moving back out clears it. One place, so the
+  /// preview's menu and the swipe on a card record it the same way.
+  static DateTime? paidAtFor(String status, {DateTime? now}) =>
+      isPaidStatus(status) ? (now ?? DateTime.now()) : null;
+
+  /// The date this invoice counts on, which for income is the day the money
+  /// came in rather than the day the document was written. An unpaid invoice,
+  /// or one settled before the stamp existed, falls back to its issue date.
+  DateTime get paymentDate => paidAt ?? issueDate;
 
   /// The payment state as shown in the app: the method is part of the state,
   /// so a card says "Contant betaald" rather than a bare "Betaald".
@@ -244,6 +264,7 @@ class Invoice {
         'notes': notes,
         'template': template,
         'status': status,
+        'paidAt': paidAt?.toIso8601String(),
         'taxRate': taxRate,
         'currency': currency,
         'createdAt': createdAt.toIso8601String(),
@@ -279,6 +300,9 @@ class Invoice {
         notes: map['notes'] ?? '',
         template: map['template'] ?? 'classic',
         status: map['status'] ?? 'concept',
+        paidAt: map['paidAt'] == null
+            ? null
+            : DateTime.tryParse(map['paidAt'] as String),
         taxRate: (map['taxRate'] ?? 21.0).toDouble(),
         currency: map['currency'] ?? '€',
         createdAt: DateTime.parse(map['createdAt'] ?? DateTime.now().toIso8601String()),
@@ -301,6 +325,8 @@ class Invoice {
     String? notes,
     String? template,
     String? status,
+    DateTime? paidAt,
+    bool clearPaidAt = false,
     double? taxRate,
     String? currency,
     DateTime? createdAt,
@@ -334,6 +360,7 @@ class Invoice {
         notes: notes ?? this.notes,
         template: template ?? this.template,
         status: status ?? this.status,
+        paidAt: clearPaidAt ? null : (paidAt ?? this.paidAt),
         taxRate: taxRate ?? this.taxRate,
         currency: currency ?? this.currency,
         createdAt: createdAt ?? this.createdAt,
