@@ -146,39 +146,54 @@ class MainActivity : FlutterActivity() {
      * it can still show is the filename it was handed.
      */
     private fun shareFile(call: MethodCall, result: MethodChannel.Result) {
-        val filePath = call.argument<String>("filePath")
+        // One document as `filePath`, or several as `filePaths` — the latter
+        // goes out as ACTION_SEND_MULTIPLE.
+        val filePaths = call.argument<List<String>>("filePaths")
+            ?: listOfNotNull(call.argument<String>("filePath"))
         val mimeType = call.argument<String>("mimeType") ?: "application/pdf"
         val subject = call.argument<String>("subject").orEmpty()
         val text = call.argument<String>("text").orEmpty()
-        if (filePath.isNullOrEmpty()) {
+        if (filePaths.isEmpty() || filePaths.any { it.isEmpty() }) {
             result.error("BAD_ARGS", "filePath is verplicht", null)
             return
         }
 
-        val file = File(filePath)
-        if (!file.exists()) {
-            result.error("NO_FILE", "Bestand niet gevonden: $filePath", null)
+        val files = filePaths.map { File(it) }
+        files.firstOrNull { !it.exists() }?.let {
+            result.error("NO_FILE", "Bestand niet gevonden: ${it.path}", null)
             return
         }
 
-        val uri = FileProvider.getUriForFile(this, "$packageName.provider", file)
-        val send = Intent(Intent.ACTION_SEND).apply {
+        val uris = files.map {
+            FileProvider.getUriForFile(this, "$packageName.provider", it)
+        }
+        // The documents carried as ClipData as well as EXTRA_STREAM. This is
+        // how a file manager hands a document over, and it is what gives the
+        // receiving app the name and type of each attachment up front rather
+        // than only a URI to go and query.
+        val clip = ClipData.newUri(contentResolver, files[0].name, uris[0])
+        for (i in 1 until uris.size) clip.addItem(ClipData.Item(uris[i]))
+
+        val send = if (uris.size == 1) {
+            Intent(Intent.ACTION_SEND).apply {
+                putExtra(Intent.EXTRA_STREAM, uris[0])
+            }
+        } else {
+            Intent(Intent.ACTION_SEND_MULTIPLE).apply {
+                putParcelableArrayListExtra(Intent.EXTRA_STREAM, ArrayList(uris))
+            }
+        }.apply {
             type = mimeType
-            putExtra(Intent.EXTRA_STREAM, uri)
             if (subject.isNotEmpty()) putExtra(Intent.EXTRA_SUBJECT, subject)
             if (text.isNotEmpty()) putExtra(Intent.EXTRA_TEXT, text)
-            // The document carried as ClipData as well as EXTRA_STREAM. This
-            // is how a file manager hands a document over, and it is what
-            // gives the receiving app the name and type of the attachment
-            // up front rather than only a URI to go and query.
-            clipData = ClipData.newUri(contentResolver, file.name, uri)
+            clipData = clip
             addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
         }
 
         // Resolve against the plain send intent, not the chooser: a chooser
         // resolves to the system resolver alone, so granting off that would
         // hand the permission to the picker rather than to the app picked.
-        grantToTargets(send, uri)
+        uris.forEach { grantToTargets(send, it) }
 
         val chooser = Intent.createChooser(send, null).apply {
             withoutTextForWhatsapp()?.let {

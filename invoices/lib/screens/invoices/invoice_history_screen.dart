@@ -1,10 +1,14 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 import '../../config/theme.dart';
 import '../../models/invoice.dart';
 import '../../providers/business_provider.dart';
 import '../../providers/invoice_provider.dart';
+import '../../services/download_service.dart';
+import '../../services/email_service.dart';
+import '../../services/pdf_service.dart';
 import '../../utils/price.dart';
 import 'movable_invoice_card.dart';
 import 'invoice_preview_screen.dart';
@@ -32,11 +36,11 @@ int _numberValue(Invoice invoice) {
 }
 
 int _compare(Invoice a, Invoice b, _Sort sort) => switch (sort) {
-      _Sort.numberDesc => _numberValue(b).compareTo(_numberValue(a)),
-      _Sort.numberAsc => _numberValue(a).compareTo(_numberValue(b)),
-      _Sort.priceDesc => b.total.compareTo(a.total),
-      _Sort.priceAsc => a.total.compareTo(b.total),
-    };
+  _Sort.numberDesc => _numberValue(b).compareTo(_numberValue(a)),
+  _Sort.numberAsc => _numberValue(a).compareTo(_numberValue(b)),
+  _Sort.priceDesc => b.total.compareTo(a.total),
+  _Sort.priceAsc => a.total.compareTo(b.total),
+};
 
 class InvoiceHistoryScreen extends StatefulWidget {
   const InvoiceHistoryScreen({super.key});
@@ -49,6 +53,202 @@ class _InvoiceHistoryScreenState extends State<InvoiceHistoryScreen> {
   String _filter = 'facturen';
   String _search = '';
   _Sort _sort = _Sort.numberDesc;
+
+  /// Ids of the cards picked for a bulk action. Selecting starts with a
+  /// long-press and ends when the last card is unticked or the bar is closed.
+  final Set<String> _selected = {};
+  bool _busy = false;
+
+  bool get _isSelecting => _selected.isNotEmpty;
+
+  void _toggleSelected(Invoice invoice) => setState(() {
+    if (!_selected.remove(invoice.id)) _selected.add(invoice.id);
+  });
+
+  void _exitSelection() => setState(_selected.clear);
+
+  /// The selected documents that still exist — one may have been deleted
+  /// elsewhere while it was ticked.
+  List<Invoice> _selectedInvoices() => context
+      .read<InvoiceProvider>()
+      .invoices
+      .where((i) => _selected.contains(i.id))
+      .toList();
+
+  void _snack(String message, {bool error = false}) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message),
+        behavior: SnackBarBehavior.floating,
+        backgroundColor: error ? AppTheme.error : null,
+      ),
+    );
+  }
+
+  /// Opens the share sheet with the selected documents' PDFs. A single one
+  /// goes out the way the preview's "Versturen" sends it — with the email
+  /// template as its message, also put on the clipboard for WhatsApp. Several
+  /// go together under a subject naming them, as the template speaks about
+  /// one invoice.
+  Future<void> _shareSelected() async {
+    final invoices = _selectedInvoices();
+    if (invoices.isEmpty) return;
+    final business = context.read<BusinessProvider>();
+    setState(() => _busy = true);
+    try {
+      final documents = [
+        for (final invoice in invoices)
+          (
+            invoice: invoice,
+            pdfBytes: await PdfService.generatePdf(
+              invoice,
+              logoBytes: business.logoBytes,
+            ),
+          ),
+      ];
+      if (documents.length == 1) {
+        final invoice = documents.single.invoice;
+        final subject = EmailService.buildDefaultSubject(invoice);
+        final body = EmailService.renderTemplate(
+          business.businessInfo?.emailTemplate ?? '',
+          invoice,
+        );
+        await Clipboard.setData(ClipboardData(text: '$subject\n\n$body'));
+        await EmailService.shareInvoice(
+          invoice: invoice,
+          pdfBytes: documents.single.pdfBytes,
+          subject: subject,
+          message: body,
+        );
+      } else {
+        await EmailService.shareInvoices(documents);
+      }
+      if (mounted) _exitSelection();
+    } catch (e) {
+      if (mounted) _snack('Delen mislukt: $e', error: true);
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  /// Saves each selected document's PDF to Downloads, under the same name it
+  /// would be shared with.
+  Future<void> _downloadSelected() async {
+    final invoices = _selectedInvoices();
+    if (invoices.isEmpty) return;
+    final logoBytes = context.read<BusinessProvider>().logoBytes;
+    setState(() => _busy = true);
+    var saved = 0;
+    String? location;
+    try {
+      for (final invoice in invoices) {
+        final bytes = await PdfService.generatePdf(
+          invoice,
+          logoBytes: logoBytes,
+        );
+        location = await DownloadService.save(
+          bytes: bytes,
+          filename: invoice.pdfFilename,
+          mimeType: 'application/pdf',
+        );
+        saved++;
+      }
+      if (!mounted) return;
+      _exitSelection();
+      _snack(
+        saved == 1
+            ? 'Opgeslagen in $location'
+            : "$saved PDF's opgeslagen in Downloads",
+      );
+    } catch (e) {
+      if (!mounted) return;
+      _snack(
+        saved == 0
+            ? 'Downloaden mislukt: $e'
+            : '$saved van ${invoices.length} opgeslagen, daarna mislukt: $e',
+        error: true,
+      );
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  /// Marks every selected invoice paid with [status]. Quotes carry no payment
+  /// state and are passed over, and an invoice already paid this way is left
+  /// alone so it keeps its original payment date.
+  Future<void> _markSelectedPaid(String status) async {
+    final invoices = _selectedInvoices()
+        .where((i) => !i.isQuote && i.status != status)
+        .toList();
+    final provider = context.read<InvoiceProvider>();
+    setState(() => _busy = true);
+    try {
+      await Future.wait(
+        invoices.map((i) => provider.updateStatus(i.id, status)),
+      );
+      if (!mounted) return;
+      _exitSelection();
+      final how = status == Invoice.paidCash ? 'contant' : 'pin';
+      _snack(
+        invoices.length == 1
+            ? '1 factuur gemarkeerd als $how betaald'
+            : '${invoices.length} facturen gemarkeerd als $how betaald',
+      );
+    } catch (e) {
+      if (mounted) _snack('Bijwerken mislukt: $e', error: true);
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  Future<void> _deleteSelected() async {
+    final invoices = _selectedInvoices();
+    if (invoices.isEmpty) return;
+    final count = invoices.length;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(
+          count == 1
+              ? '${invoices.first.documentLabel} verwijderen'
+              : '$count documenten verwijderen',
+        ),
+        content: Text(
+          count == 1
+              ? 'Wil je ${invoices.first.numberLabel} verwijderen? '
+                    'Dit kan niet ongedaan worden gemaakt.'
+              : 'Wil je deze $count documenten verwijderen? '
+                    'Dit kan niet ongedaan worden gemaakt.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Annuleren'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            style: TextButton.styleFrom(foregroundColor: AppTheme.error),
+            child: const Text('Verwijderen'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+    final provider = context.read<InvoiceProvider>();
+    setState(() => _busy = true);
+    try {
+      await Future.wait(invoices.map((i) => provider.deleteInvoice(i.id)));
+      if (!mounted) return;
+      _exitSelection();
+      _snack(
+        count == 1 ? '1 document verwijderd' : '$count documenten verwijderd',
+      );
+    } catch (e) {
+      if (mounted) _snack('Verwijderen mislukt: $e', error: true);
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
 
   /// Marking an invoice paid, swiped right and up (contant) or right and
   /// down (pin). A quote carries no payment state, so it gets neither.
@@ -120,154 +320,328 @@ class _InvoiceHistoryScreenState extends State<InvoiceHistoryScreen> {
             inv.clientKenteken.toLowerCase().contains(q);
       }
       return true;
-    }).toList()
-      ..sort((a, b) => _compare(a, b, _sort));
+    }).toList()..sort((a, b) => _compare(a, b, _sort));
 
-    return Scaffold(
-      body: Column(
-        children: [
-          Container(
-            color: AppTheme.surf(context),
-            padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
-            child: Column(
-              children: [
-                Row(
+    // Only what is on screen can be ticked, so "select all" means the list as
+    // it is currently filtered.
+    final allSelected =
+        invoices.isNotEmpty && invoices.every((i) => _selected.contains(i.id));
+
+    return PopScope(
+      canPop: !_isSelecting,
+      onPopInvokedWithResult: (didPop, _) {
+        if (!didPop) _exitSelection();
+      },
+      child: Scaffold(
+        body: Column(
+          children: [
+            if (_isSelecting)
+              _SelectionBar(
+                count: _selected.length,
+                busy: _busy,
+                allSelected: allSelected,
+                // Paying only applies to invoices; a selection of quotes alone
+                // has nothing to mark.
+                canMarkPaid: _selectedInvoices().any((i) => !i.isQuote),
+                onClose: _exitSelection,
+                onSelectAll: () => setState(() {
+                  if (allSelected) {
+                    _selected.clear();
+                  } else {
+                    _selected.addAll(invoices.map((i) => i.id));
+                  }
+                }),
+                onShare: _shareSelected,
+                onDownload: _downloadSelected,
+                onMarkPaid: _markSelectedPaid,
+                onDelete: _deleteSelected,
+              )
+            else
+              Container(
+                color: AppTheme.surf(context),
+                padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+                child: Column(
                   children: [
-                    Expanded(
-                      child: TextField(
-                        decoration: InputDecoration(
-                          hintText: 'Zoeken op naam, kenteken of nummer...',
-                          prefixIcon: const Icon(Icons.search, size: 20),
-                          contentPadding:
-                              const EdgeInsets.symmetric(vertical: 10),
-                          fillColor: AppTheme.bg(context),
-                          filled: true,
-                          border: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(10),
-                            borderSide:
-                                BorderSide(color: AppTheme.borderOf(context)),
-                          ),
-                          enabledBorder: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(10),
-                            borderSide:
-                                BorderSide(color: AppTheme.borderOf(context)),
-                          ),
-                          focusedBorder: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(10),
-                            borderSide: const BorderSide(
-                              color: AppTheme.primary,
-                              width: 2,
+                    Row(
+                      children: [
+                        Expanded(
+                          child: TextField(
+                            decoration: InputDecoration(
+                              hintText: 'Zoeken op naam, kenteken of nummer...',
+                              prefixIcon: const Icon(Icons.search, size: 20),
+                              contentPadding: const EdgeInsets.symmetric(
+                                vertical: 10,
+                              ),
+                              fillColor: AppTheme.bg(context),
+                              filled: true,
+                              border: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(10),
+                                borderSide: BorderSide(
+                                  color: AppTheme.borderOf(context),
+                                ),
+                              ),
+                              enabledBorder: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(10),
+                                borderSide: BorderSide(
+                                  color: AppTheme.borderOf(context),
+                                ),
+                              ),
+                              focusedBorder: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(10),
+                                borderSide: const BorderSide(
+                                  color: AppTheme.primary,
+                                  width: 2,
+                                ),
+                              ),
                             ),
+                            onChanged: (v) => setState(() => _search = v),
                           ),
                         ),
-                        onChanged: (v) => setState(() => _search = v),
-                      ),
+                        _SortButton(
+                          sort: _sort,
+                          onChanged: (s) => setState(() => _sort = s),
+                        ),
+                      ],
                     ),
-                    _SortButton(
-                      sort: _sort,
-                      onChanged: (s) => setState(() => _sort = s),
+                    const SizedBox(height: 10),
+                    SingleChildScrollView(
+                      scrollDirection: Axis.horizontal,
+                      child: Row(
+                        children: [
+                          _FilterChip(
+                            'facturen',
+                            'Facturen',
+                            _filter,
+                            () => setState(() => _filter = 'facturen'),
+                          ),
+                          _FilterChip(
+                            'concept',
+                            'Concept',
+                            _filter,
+                            () => setState(() => _filter = 'concept'),
+                          ),
+                          _FilterChip(
+                            'betaald',
+                            'Betaald',
+                            _filter,
+                            () => setState(() => _filter = 'betaald'),
+                          ),
+                          _FilterChip(
+                            'offerte',
+                            'Offertes',
+                            _filter,
+                            () => setState(() => _filter = 'offerte'),
+                          ),
+                        ],
+                      ),
                     ),
                   ],
                 ),
-                const SizedBox(height: 10),
-                SingleChildScrollView(
-                  scrollDirection: Axis.horizontal,
-                  child: Row(
-                    children: [
-                      _FilterChip(
-                        'facturen',
-                        'Facturen',
-                        _filter,
-                        () => setState(() => _filter = 'facturen'),
-                      ),
-                      _FilterChip(
-                        'concept',
-                        'Concept',
-                        _filter,
-                        () => setState(() => _filter = 'concept'),
-                      ),
-                      _FilterChip(
-                        'betaald',
-                        'Betaald',
-                        _filter,
-                        () => setState(() => _filter = 'betaald'),
-                      ),
-                      _FilterChip(
-                        'offerte',
-                        'Offertes',
-                        _filter,
-                        () => setState(() => _filter = 'offerte'),
-                      ),
-                    ],
+              ),
+            Container(
+              color: AppTheme.surf(context),
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Text(
+                    'Maandoverzicht',
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w500,
+                      color: AppTheme.onSurfaceVariant(context),
+                    ),
                   ),
-                ),
-              ],
-            ),
-          ),
-          Container(
-            color: AppTheme.surf(context),
-            padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Text(
-                  'Maandoverzicht',
-                  style: TextStyle(
-                    fontSize: 12,
-                    fontWeight: FontWeight.w500,
-                    color: AppTheme.onSurfaceVariant(context),
-                  ),
-                ),
-                const SizedBox(height: 8),
-                _StatsRow(
-                  invoices: facturen
-                      .where((inv) =>
-                          inv.issueDate.year == DateTime.now().year &&
-                          inv.issueDate.month == DateTime.now().month)
-                      .toList(),
-                  onTap: () => Navigator.of(context).push(
-                    MaterialPageRoute(
-                      builder: (_) => InvoiceStatsScreen(
-                        allInvoices: facturen,
+                  const SizedBox(height: 8),
+                  _StatsRow(
+                    invoices: facturen
+                        .where(
+                          (inv) =>
+                              inv.issueDate.year == DateTime.now().year &&
+                              inv.issueDate.month == DateTime.now().month,
+                        )
+                        .toList(),
+                    onTap: () => Navigator.of(context).push(
+                      MaterialPageRoute(
+                        builder: (_) =>
+                            InvoiceStatsScreen(allInvoices: facturen),
                       ),
                     ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
-          ),
-          const Divider(height: 1),
-          Expanded(
-            child: !provider.isLoaded
-                ? const Center(child: CircularProgressIndicator())
-                : invoices.isEmpty
-                ? _EmptyState(filter: _filter, search: _search)
-                : ListView.builder(
-                    padding: const EdgeInsets.all(16),
-                    itemCount: invoices.length,
-                    itemBuilder: (ctx, i) {
-                      final invoice = invoices[i];
-                      return MovableInvoiceCard(
-                        key: ValueKey(invoice.id),
-                        swipeUp: _paidAction(invoice, Invoice.paidCash),
-                        swipeDown: _paidAction(invoice, Invoice.paidCard),
-                        onDelete: () => _confirmDelete(invoice),
-                        child: _InvoiceCard(
-                          invoice: invoice,
-                          margin: EdgeInsets.zero,
-                          wrapInCard: false,
-                          onTap: () => Navigator.of(context).push(
-                            MaterialPageRoute(
-                              builder: (_) =>
-                                  InvoicePreviewScreen(invoice: invoice),
-                            ),
+            const Divider(height: 1),
+            Expanded(
+              child: !provider.isLoaded
+                  ? const Center(child: CircularProgressIndicator())
+                  : invoices.isEmpty
+                  ? _EmptyState(filter: _filter, search: _search)
+                  : ListView.builder(
+                      padding: const EdgeInsets.all(16),
+                      itemCount: invoices.length,
+                      itemBuilder: (ctx, i) {
+                        final invoice = invoices[i];
+                        return MovableInvoiceCard(
+                          key: ValueKey(invoice.id),
+                          swipeEnabled: !_isSelecting,
+                          swipeUp: _paidAction(invoice, Invoice.paidCash),
+                          swipeDown: _paidAction(invoice, Invoice.paidCard),
+                          onDelete: () => _confirmDelete(invoice),
+                          child: _InvoiceCard(
+                            invoice: invoice,
+                            margin: EdgeInsets.zero,
+                            wrapInCard: false,
+                            selecting: _isSelecting,
+                            selected: _selected.contains(invoice.id),
+                            onLongPress: () => _toggleSelected(invoice),
+                            onTap: _isSelecting
+                                ? () => _toggleSelected(invoice)
+                                : () => Navigator.of(context).push(
+                                    MaterialPageRoute(
+                                      builder: (_) => InvoicePreviewScreen(
+                                        invoice: invoice,
+                                      ),
+                                    ),
+                                  ),
                           ),
+                        );
+                      },
+                    ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Stands in for the search field and filter chips while cards are selected:
+/// the count, select-all, and the bulk actions.
+class _SelectionBar extends StatelessWidget {
+  final int count;
+  final bool busy, allSelected, canMarkPaid;
+  final VoidCallback onClose, onSelectAll, onShare, onDownload, onDelete;
+  final ValueChanged<String> onMarkPaid;
+
+  /// Five actions beside the count is a tight fit on a phone, so the action
+  /// buttons run compact and the count gives way first.
+  static final _compact = IconButton.styleFrom(
+    visualDensity: VisualDensity.compact,
+  );
+
+  const _SelectionBar({
+    required this.count,
+    required this.busy,
+    required this.allSelected,
+    required this.canMarkPaid,
+    required this.onClose,
+    required this.onSelectAll,
+    required this.onShare,
+    required this.onDownload,
+    required this.onMarkPaid,
+    required this.onDelete,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: AppTheme.primary.withAlpha(20),
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(4, 6, 4, 6),
+        child: Row(
+          children: [
+            IconButton(
+              icon: const Icon(Icons.close),
+              tooltip: 'Selectie annuleren',
+              onPressed: busy ? null : onClose,
+            ),
+            Expanded(
+              child: Text(
+                '$count geselecteerd',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                  fontWeight: FontWeight.w700,
+                  fontSize: 14,
+                ),
+              ),
+            ),
+            if (busy)
+              const Padding(
+                padding: EdgeInsets.symmetric(horizontal: 16),
+                child: SizedBox(
+                  width: 20,
+                  height: 20,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                ),
+              )
+            else ...[
+              IconButton(
+                style: _compact,
+                icon: Icon(allSelected ? Icons.deselect : Icons.select_all),
+                tooltip: allSelected ? 'Niets selecteren' : 'Alles selecteren',
+                onPressed: onSelectAll,
+              ),
+              IconButton(
+                style: _compact,
+                icon: const Icon(Icons.share_outlined),
+                tooltip: 'Delen',
+                onPressed: onShare,
+              ),
+              IconButton(
+                style: _compact,
+                icon: const Icon(Icons.download_outlined),
+                tooltip: 'PDF downloaden',
+                onPressed: onDownload,
+              ),
+              PopupMenuButton<String>(
+                style: _compact,
+                icon: const Icon(Icons.price_check),
+                tooltip: 'Markeer als betaald',
+                enabled: canMarkPaid,
+                onSelected: onMarkPaid,
+                itemBuilder: (_) => const [
+                  PopupMenuItem(
+                    value: Invoice.paidCash,
+                    child: Row(
+                      children: [
+                        Icon(
+                          Icons.payments_rounded,
+                          size: 18,
+                          color: AppTheme.cash,
                         ),
-                      );
-                    },
+                        SizedBox(width: 8),
+                        Text('Contant betaald'),
+                      ],
+                    ),
                   ),
-          ),
-        ],
+                  PopupMenuItem(
+                    value: Invoice.paidCard,
+                    child: Row(
+                      children: [
+                        Icon(
+                          Icons.credit_card_rounded,
+                          size: 18,
+                          color: AppTheme.card,
+                        ),
+                        SizedBox(width: 8),
+                        Text('Pin betaald'),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+              IconButton(
+                style: _compact,
+                icon: const Icon(Icons.delete_outline),
+                color: AppTheme.error,
+                tooltip: 'Verwijderen',
+                onPressed: onDelete,
+              ),
+            ],
+          ],
+        ),
       ),
     );
   }
@@ -296,8 +670,11 @@ class _StatsRow extends StatelessWidget {
 
     final totalStr = formatMoney(total, currency: currency, decimals: 0);
     final paidStr = formatMoney(paid, currency: currency, decimals: 0);
-    final unpaidStr =
-        formatMoney(total - paid, currency: currency, decimals: 0);
+    final unpaidStr = formatMoney(
+      total - paid,
+      currency: currency,
+      decimals: 0,
+    );
     final countStr = '${invoices.length}';
     final fs = _fontSize([totalStr, paidStr, unpaidStr, countStr]);
 
@@ -323,9 +700,18 @@ class _StatsRow extends StatelessWidget {
           _div(context),
           Expanded(
             flex: 2,
-            child: _Stat('Aantal', countStr, AppTheme.onSurfaceVariant(context), fs),
+            child: _Stat(
+              'Aantal',
+              countStr,
+              AppTheme.onSurfaceVariant(context),
+              fs,
+            ),
           ),
-          const Icon(Icons.chevron_right, size: 16, color: AppTheme.textSecondary),
+          const Icon(
+            Icons.chevron_right,
+            size: 16,
+            color: AppTheme.textSecondary,
+          ),
         ],
       ),
     );
@@ -372,20 +758,32 @@ class _Stat extends StatelessWidget {
 class _InvoiceCard extends StatelessWidget {
   final Invoice invoice;
   final VoidCallback onTap;
+  final VoidCallback? onLongPress;
   final EdgeInsetsGeometry margin;
   final bool wrapInCard;
+
+  /// While the list is selecting, the icon becomes a tick box and the badge
+  /// menus go quiet — a tap anywhere on the card toggles it.
+  final bool selecting;
+  final bool selected;
+
   const _InvoiceCard({
     required this.invoice,
     required this.onTap,
+    this.onLongPress,
     this.margin = const EdgeInsets.only(bottom: 10),
     this.wrapInCard = true,
+    this.selecting = false,
+    this.selected = false,
   });
 
   @override
   Widget build(BuildContext context) {
     final content = InkWell(
       onTap: onTap,
-      child: Padding(
+      onLongPress: onLongPress,
+      child: Container(
+        color: selected ? AppTheme.primary.withAlpha(20) : null,
         padding: const EdgeInsets.all(16),
         child: Row(
           children: [
@@ -393,12 +791,18 @@ class _InvoiceCard extends StatelessWidget {
               width: 44,
               height: 44,
               decoration: BoxDecoration(
-                color: AppTheme.primary.withAlpha(26),
+                color: selected
+                    ? AppTheme.primary
+                    : AppTheme.primary.withAlpha(26),
                 borderRadius: BorderRadius.circular(10),
               ),
-              child: const Icon(
-                Icons.receipt_long,
-                color: AppTheme.primary,
+              child: Icon(
+                selected
+                    ? Icons.check
+                    : selecting
+                    ? Icons.check_box_outline_blank
+                    : Icons.receipt_long,
+                color: selected ? Colors.white : AppTheme.primary,
                 size: 22,
               ),
             ),
@@ -417,10 +821,12 @@ class _InvoiceCard extends StatelessWidget {
                         ),
                       ),
                       const SizedBox(width: 8),
-                      if (invoice.isQuote)
-                        _QuoteBadge(invoice: invoice)
-                      else
-                        _TappableStatusBadge(invoice: invoice),
+                      IgnorePointer(
+                        ignoring: selecting,
+                        child: invoice.isQuote
+                            ? _QuoteBadge(invoice: invoice)
+                            : _TappableStatusBadge(invoice: invoice),
+                      ),
                     ],
                   ),
                   const SizedBox(height: 2),
@@ -462,8 +868,10 @@ class _InvoiceCard extends StatelessWidget {
                 color: AppTheme.onSurface(context),
               ),
             ),
-            const SizedBox(width: 4),
-            const Icon(Icons.chevron_right, color: AppTheme.textSecondary),
+            if (!selecting) ...[
+              const SizedBox(width: 4),
+              const Icon(Icons.chevron_right, color: AppTheme.textSecondary),
+            ],
           ],
         ),
       ),

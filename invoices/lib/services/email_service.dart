@@ -68,7 +68,7 @@ class EmailService {
     final file = File('${tempDir.path}/${invoice.pdfFilename}');
     await file.writeAsBytes(pdfBytes, flush: true);
 
-    if (await _shareViaChannel(file.path, subject, shareText)) return;
+    if (await _shareViaChannel([file.path], subject, shareText)) return;
 
     await Share.shareXFiles(
       [XFile(file.path, mimeType: 'application/pdf')],
@@ -77,17 +77,83 @@ class EmailService {
     );
   }
 
-  /// Hands the file to MainActivity's share sheet. False when this is not a
+  /// Shares several documents in one go, from the Facturen tab's selection.
+  ///
+  /// There is no one message that fits them all — the email template speaks
+  /// about a single invoice — so they go out under a subject naming the
+  /// documents and nothing more. A single document should go through
+  /// [shareInvoice] instead, which does carry the message.
+  static Future<void> shareInvoices(
+    List<({Invoice invoice, Uint8List pdfBytes})> documents,
+  ) async {
+    final subject = documents.map((d) => d.invoice.numberLabel).join(', ');
+
+    // The web has no temp directory to write to; the browser takes the bytes.
+    if (kIsWeb) {
+      await Share.shareXFiles(
+        [
+          for (final d in documents)
+            XFile.fromData(
+              d.pdfBytes,
+              name: d.invoice.pdfFilename,
+              mimeType: 'application/pdf',
+            ),
+        ],
+        subject: subject,
+        text: subject,
+      );
+      return;
+    }
+
+    // A folder of its own per share, and a repeated name numbered: two
+    // quotes for the same customer and vehicle carry the same filename, and
+    // one file would otherwise overwrite the other.
+    final tempDir = await getTemporaryDirectory();
+    final dir = Directory(
+      '${tempDir.path}/share_${DateTime.now().millisecondsSinceEpoch}',
+    );
+    await dir.create(recursive: true);
+    final used = <String>{};
+    final paths = <String>[];
+    for (final d in documents) {
+      final name = _uniqueName(d.invoice.pdfFilename, used);
+      final file = File('${dir.path}/$name');
+      await file.writeAsBytes(d.pdfBytes, flush: true);
+      paths.add(file.path);
+    }
+
+    if (await _shareViaChannel(paths, subject, subject)) return;
+
+    await Share.shareXFiles(
+      [for (final p in paths) XFile(p, mimeType: 'application/pdf')],
+      subject: subject,
+      text: subject,
+    );
+  }
+
+  /// [name], or "name (2).pdf" and up once it is already in [used].
+  static String _uniqueName(String name, Set<String> used) {
+    final dot = name.lastIndexOf('.');
+    final stem = dot == -1 ? name : name.substring(0, dot);
+    final ext = dot == -1 ? '' : name.substring(dot);
+    var candidate = name;
+    for (var n = 2; !used.add(candidate); n++) {
+      candidate = '$stem ($n)$ext';
+    }
+    return candidate;
+  }
+
+  /// Hands the files to MainActivity's share sheet. False when this is not a
   /// platform it handles, or the call failed — share_plus then takes over.
   static Future<bool> _shareViaChannel(
-    String filePath,
+    List<String> filePaths,
     String subject,
     String text,
   ) async {
     if (kIsWeb || !Platform.isAndroid) return false;
     try {
       return await _shareChannel.invokeMethod<bool>('shareFile', {
-            'filePath': filePath,
+            'filePaths': filePaths,
             'mimeType': 'application/pdf',
             'subject': subject,
             'text': text,
@@ -131,10 +197,7 @@ class EmailService {
         )
         .replaceAll(
           '{totaal}',
-          formatMoney(
-            invoice.totaalInclBtw,
-            currency: invoice.currency,
-          ),
+          formatMoney(invoice.totaalInclBtw, currency: invoice.currency),
         );
 
     return invoice.isQuote

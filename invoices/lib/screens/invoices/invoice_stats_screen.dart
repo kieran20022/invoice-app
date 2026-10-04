@@ -18,18 +18,57 @@ class InvoiceStatsScreen extends StatefulWidget {
   State<InvoiceStatsScreen> createState() => _InvoiceStatsScreenState();
 }
 
+/// The first of [date]'s month — the key a month is selected and matched by.
+DateTime _monthOf(DateTime date) => DateTime(date.year, date.month);
+
+/// Names the selected months for the app bar and the empty state: a single
+/// month in full, a whole year as the year, an unbroken run as its two ends,
+/// a few loose months one by one, and anything longer as a count.
+String _periodLabel(List<DateTime> months) {
+  if (months.length == 1) return DateFormat('MMMM yyyy').format(months.first);
+  final first = months.first, last = months.last;
+  final sameYear = first.year == last.year;
+  if (sameYear && months.length == 12) return '${first.year}';
+  final span = (last.year - first.year) * 12 + last.month - first.month + 1;
+  if (span == months.length) {
+    return sameYear
+        ? '${DateFormat('MMM').format(first)} – '
+              '${DateFormat('MMM yyyy').format(last)}'
+        : '${DateFormat('MMM yyyy').format(first)} – '
+              '${DateFormat('MMM yyyy').format(last)}';
+  }
+  if (sameYear && months.length <= 3) {
+    return '${months.map(DateFormat('MMM').format).join(', ')} ${first.year}';
+  }
+  return '${months.length} maanden';
+}
+
 class _InvoiceStatsScreenState extends State<InvoiceStatsScreen> {
-  late DateTime _selectedMonth;
+  /// The months the stats cover, each as the first of its month. Never empty.
+  late Set<DateTime> _selectedMonths;
 
   @override
   void initState() {
     super.initState();
-    _selectedMonth = DateTime(DateTime.now().year, DateTime.now().month);
+    _selectedMonths = {_monthOf(DateTime.now())};
   }
 
+  static final _compactButton = TextButton.styleFrom(
+    padding: const EdgeInsets.symmetric(horizontal: 10),
+    minimumSize: const Size(0, 40),
+    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+  );
+
+  /// The selection in calendar order — what the chart and the title run by.
+  List<DateTime> get _sortedMonths =>
+      _selectedMonths.toList()..sort((a, b) => a.compareTo(b));
+
+  /// Months are toggled on and off, across years too, and only take effect on
+  /// "Toepassen" — so cancelling leaves the stats as they were.
   Future<void> _pickMonth(BuildContext context) async {
-    int year = _selectedMonth.year;
-    await showDialog(
+    int year = _sortedMonths.last.year;
+    final picked = {..._selectedMonths};
+    final result = await showDialog<Set<DateTime>>(
       context: context,
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, setDialogState) => AlertDialog(
@@ -66,13 +105,11 @@ class _InvoiceStatsScreenState extends State<InvoiceStatsScreen> {
               childAspectRatio: 2.2,
               children: List.generate(12, (i) {
                 final month = DateTime(year, i + 1);
-                final isSelected = month.year == _selectedMonth.year &&
-                    month.month == _selectedMonth.month;
+                final isSelected = picked.contains(month);
                 return GestureDetector(
-                  onTap: () {
-                    setState(() => _selectedMonth = month);
-                    Navigator.pop(ctx);
-                  },
+                  onTap: () => setDialogState(() {
+                    if (!picked.remove(month)) picked.add(month);
+                  }),
                   child: Container(
                     decoration: BoxDecoration(
                       color: isSelected ? AppTheme.primary : Colors.transparent,
@@ -101,9 +138,56 @@ class _InvoiceStatsScreenState extends State<InvoiceStatsScreen> {
               }),
             ),
           ),
+          // One row under the grid rather than the dialog's own actions bar,
+          // which stacks three buttons vertically once they do not fit beside
+          // each other. Compact padding keeps them on one line; scaleDown
+          // shrinks them rather than overflowing at a large text size.
+          actionsPadding: const EdgeInsets.fromLTRB(8, 0, 8, 8),
+          actions: [
+            FittedBox(
+              fit: BoxFit.scaleDown,
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  TextButton(
+                    style: _compactButton,
+                    // Ticks the shown year's twelve months, or clears them
+                    // when they are all ticked already.
+                    onPressed: () => setDialogState(() {
+                      final yearMonths = [
+                        for (var m = 1; m <= 12; m++) DateTime(year, m),
+                      ];
+                      if (yearMonths.every(picked.contains)) {
+                        picked.removeAll(yearMonths);
+                      } else {
+                        picked.addAll(yearMonths);
+                      }
+                    }),
+                    child: const Text('Hele jaar'),
+                  ),
+                  const SizedBox(width: 16),
+                  TextButton(
+                    style: _compactButton,
+                    onPressed: () => Navigator.pop(ctx),
+                    child: const Text('Annuleren'),
+                  ),
+                  TextButton(
+                    style: _compactButton,
+                    onPressed: picked.isEmpty
+                        ? null
+                        : () => Navigator.pop(ctx, picked),
+                    child: const Text('Toepassen'),
+                  ),
+                ],
+              ),
+            ),
+          ],
         ),
       ),
     );
+    if (result != null && mounted) {
+      setState(() => _selectedMonths = result);
+    }
   }
 
   /// Offers a year and downloads it as the Inkomsten overzicht: an Excel file
@@ -138,8 +222,10 @@ class _InvoiceStatsScreenState extends State<InvoiceStatsScreen> {
             ),
             const Divider(height: 1),
             ...years.map((y) {
-              final count =
-                  ExcelService.invoicesForYear(widget.allInvoices, y).length;
+              final count = ExcelService.invoicesForYear(
+                widget.allInvoices,
+                y,
+              ).length;
               return ListTile(
                 leading: const Icon(
                   Icons.table_chart_outlined,
@@ -177,24 +263,32 @@ class _InvoiceStatsScreenState extends State<InvoiceStatsScreen> {
         ),
       );
     } catch (e) {
-      messenger.showSnackBar(
-        SnackBar(content: Text('Downloaden mislukt: $e')),
-      );
+      messenger.showSnackBar(SnackBar(content: Text('Downloaden mislukt: $e')));
     }
   }
 
   @override
   Widget build(BuildContext context) {
+    final months = _sortedMonths;
+    final periodLabel = _periodLabel(months);
     final invoices = widget.allInvoices
-        .where(
-          (inv) =>
-              inv.issueDate.year == _selectedMonth.year &&
-              inv.issueDate.month == _selectedMonth.month,
-        )
+        .where((inv) => _selectedMonths.contains(_monthOf(inv.issueDate)))
         .toList();
 
-    final daysInMonth =
-        DateUtils.getDaysInMonth(_selectedMonth.year, _selectedMonth.month);
+    // The chart runs day by day through the selected months, laid end to end
+    // in calendar order: loose months sit side by side rather than across the
+    // empty months between them. Day n of the run is plotted at x = n, so a
+    // single month reads its day numbers straight off the axis.
+    final days = [
+      for (final m in months)
+        for (var d = 1; d <= DateUtils.getDaysInMonth(m.year, m.month); d++)
+          DateTime(m.year, m.month, d),
+    ];
+    final singleMonth = months.length == 1;
+    final spanYears = months.first.year != months.last.year;
+    // Several months label their first days instead of day numbers, thinned
+    // to about six so they do not collide.
+    final monthLabelEvery = (months.length / 6).ceil();
     final currency = invoices.isNotEmpty ? invoices.first.currency : '€';
 
     final monthTotal = invoices.fold(0.0, (s, i) => s + i.totaalInclBtw);
@@ -207,35 +301,42 @@ class _InvoiceStatsScreenState extends State<InvoiceStatsScreen> {
     final cardSpots = <FlSpot>[];
     final outstandingSpots = <FlSpot>[];
 
-    for (int d = 1; d <= daysInMonth; d++) {
-      final day = invoices.where((inv) => inv.issueDate.day == d).toList();
-      final total = day.fold(0.0, (s, i) => s + i.totaalInclBtw);
-      final paid = day
+    final invoicesByDay = <DateTime, List<Invoice>>{};
+    for (final inv in invoices) {
+      final d = inv.issueDate;
+      invoicesByDay
+          .putIfAbsent(DateTime(d.year, d.month, d.day), () => [])
+          .add(inv);
+    }
+
+    for (int p = 0; p < days.length; p++) {
+      final x = p + 1;
+      final point = invoicesByDay[days[p]] ?? const <Invoice>[];
+      final total = point.fold(0.0, (s, i) => s + i.totaalInclBtw);
+      final paid = point
           .where((i) => i.isPaid)
           .fold(0.0, (s, i) => s + i.totaalInclBtw);
-      // The two methods are drawn apart, so a day's takings say how they came
-      // in. A pre-method 'betaald' invoice counts towards neither line, but
-      // still towards the paid total and Openstaand.
-      totalSpots.add(
-        FlSpot(d.toDouble(), total),
-      );
+      // The two methods are drawn apart, so a point's takings say how they
+      // came in. A pre-method 'betaald' invoice counts towards neither line,
+      // but still towards the paid total and Openstaand.
+      totalSpots.add(FlSpot(x.toDouble(), total));
       cashSpots.add(
         FlSpot(
-          d.toDouble(),
-          day
+          x.toDouble(),
+          point
               .where((i) => i.status == Invoice.paidCash)
               .fold(0.0, (s, i) => s + i.totaalInclBtw),
         ),
       );
       cardSpots.add(
         FlSpot(
-          d.toDouble(),
-          day
+          x.toDouble(),
+          point
               .where((i) => i.status == Invoice.paidCard)
               .fold(0.0, (s, i) => s + i.totaalInclBtw),
         ),
       );
-      outstandingSpots.add(FlSpot(d.toDouble(), total - paid));
+      outstandingSpots.add(FlSpot(x.toDouble(), total - paid));
     }
 
     final maxY = totalSpots.map((s) => s.y).fold(0.0, (a, b) => a > b ? a : b);
@@ -250,29 +351,25 @@ class _InvoiceStatsScreenState extends State<InvoiceStatsScreen> {
     final paymentRate = monthTotal > 0 ? monthPaid / monthTotal * 100 : 0.0;
     final largestInvoice = invoices.isEmpty
         ? null
-        : invoices.reduce(
-            (a, b) => a.totaalInclBtw >= b.totaalInclBtw ? a : b,
-          );
+        : invoices.reduce((a, b) => a.totaalInclBtw >= b.totaalInclBtw ? a : b);
 
     final clientTotals = <String, double>{};
     for (final inv in invoices) {
       clientTotals[inv.clientNaam] =
           (clientTotals[inv.clientNaam] ?? 0) + inv.totaalInclBtw;
     }
-    final topClients = (clientTotals.entries.toList()
-          ..sort((a, b) => b.value.compareTo(a.value)))
-        .take(5)
-        .toList();
+    final topClients =
+        (clientTotals.entries.toList()
+              ..sort((a, b) => b.value.compareTo(a.value)))
+            .take(5)
+            .toList();
 
-    final conceptCount =
-        invoices.where((i) => i.status == 'concept').length;
+    final conceptCount = invoices.where((i) => i.status == 'concept').length;
 
     // Paid split by how it was paid. Invoices settled before the method was
     // recorded keep their own row rather than being guessed into one.
-    final cash =
-        invoices.where((i) => i.status == Invoice.paidCash).toList();
-    final card =
-        invoices.where((i) => i.status == Invoice.paidCard).toList();
+    final cash = invoices.where((i) => i.status == Invoice.paidCash).toList();
+    final card = invoices.where((i) => i.status == Invoice.paidCard).toList();
     final legacyPaidCount = invoices.where((i) => i.status == 'betaald').length;
     final cashTotal = cash.fold(0.0, (s, i) => s + i.totaalInclBtw);
     final cardTotal = card.fold(0.0, (s, i) => s + i.totaalInclBtw);
@@ -285,9 +382,12 @@ class _InvoiceStatsScreenState extends State<InvoiceStatsScreen> {
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Text(
-                DateFormat('MMMM yyyy').format(_selectedMonth),
-                style: const TextStyle(fontWeight: FontWeight.w700),
+              Flexible(
+                child: Text(
+                  periodLabel,
+                  style: const TextStyle(fontWeight: FontWeight.w700),
+                  overflow: TextOverflow.ellipsis,
+                ),
               ),
               const SizedBox(width: 2),
               const Icon(Icons.arrow_drop_down, size: 20),
@@ -334,40 +434,49 @@ class _InvoiceStatsScreenState extends State<InvoiceStatsScreen> {
                                 color: AppTheme.borderOf(context),
                               ),
                               tooltipRoundedRadius: 8,
-                              getTooltipItems: (spots) =>
-                                  spots.map((spot) {
-                                    const colors = [
-                                      AppTheme.primary,
-                                      AppTheme.cash,
-                                      AppTheme.card,
-                                      AppTheme.error,
-                                    ];
-                                    const labels = [
-                                      'Totaal',
-                                      'Contant',
-                                      'Pin',
-                                      'Openstaand',
-                                    ];
-                                    return LineTooltipItem(
-                                      '${labels[spot.barIndex]}\n',
-                                      TextStyle(
-                                        color: colors[spot.barIndex],
-                                        fontWeight: FontWeight.w600,
-                                        fontSize: 11,
+                              getTooltipItems: (spots) => spots.map((spot) {
+                                const colors = [
+                                  AppTheme.primary,
+                                  AppTheme.cash,
+                                  AppTheme.card,
+                                  AppTheme.error,
+                                ];
+                                const labels = [
+                                  'Totaal',
+                                  'Contant',
+                                  'Pin',
+                                  'Openstaand',
+                                ];
+                                // Once several months are shown the axis
+                                // names months rather than days, so the
+                                // tooltip carries the date above its first
+                                // line.
+                                final date = spot == spots.first
+                                    ? '${DateFormat('d MMM yyyy').format(days[spot.x.toInt() - 1])}\n'
+                                    : '';
+                                return LineTooltipItem(
+                                  '$date${labels[spot.barIndex]}\n',
+                                  TextStyle(
+                                    color: colors[spot.barIndex],
+                                    fontWeight: FontWeight.w600,
+                                    fontSize: 11,
+                                  ),
+                                  children: [
+                                    TextSpan(
+                                      text: formatMoney(
+                                        spot.y,
+                                        currency: currency,
+                                        decimals: 0,
                                       ),
-                                      children: [
-                                        TextSpan(
-                                          text:
-                                              formatMoney(spot.y, currency: currency, decimals: 0),
-                                          style: TextStyle(
-                                            color: AppTheme.onSurface(context),
-                                            fontWeight: FontWeight.w700,
-                                            fontSize: 13,
-                                          ),
-                                        ),
-                                      ],
-                                    );
-                                  }).toList(),
+                                      style: TextStyle(
+                                        color: AppTheme.onSurface(context),
+                                        fontWeight: FontWeight.w700,
+                                        fontSize: 13,
+                                      ),
+                                    ),
+                                  ],
+                                );
+                              }).toList(),
                             ),
                           ),
                           gridData: FlGridData(
@@ -389,17 +498,36 @@ class _InvoiceStatsScreenState extends State<InvoiceStatsScreen> {
                             bottomTitles: AxisTitles(
                               sideTitles: SideTitles(
                                 showTitles: true,
-                                interval: 7,
+                                // A single month labels every seventh day;
+                                // several are asked about every day and label
+                                // only where a (shown) month begins.
+                                interval: singleMonth ? 7 : 1,
                                 reservedSize: 28,
                                 getTitlesWidget: (value, meta) {
-                                  final day = value.toInt();
-                                  if (value == meta.min || value == meta.max) {
+                                  final x = value.toInt();
+                                  if (value != x || x < 1 || x > days.length) {
+                                    return const SizedBox.shrink();
+                                  }
+                                  final day = days[x - 1];
+                                  if (singleMonth) {
+                                    if (value == meta.min ||
+                                        value == meta.max) {
+                                      return const SizedBox.shrink();
+                                    }
+                                  } else if (day.day != 1 ||
+                                      months.indexOf(_monthOf(day)) %
+                                              monthLabelEvery !=
+                                          0) {
                                     return const SizedBox.shrink();
                                   }
                                   return Padding(
                                     padding: const EdgeInsets.only(top: 6),
                                     child: Text(
-                                      '$day',
+                                      singleMonth
+                                          ? '$x'
+                                          : DateFormat(
+                                              spanYears ? 'MMM yy' : 'MMM',
+                                            ).format(day),
                                       style: const TextStyle(
                                         color: AppTheme.textSecondary,
                                         fontSize: 11,
@@ -415,13 +543,16 @@ class _InvoiceStatsScreenState extends State<InvoiceStatsScreen> {
                                 reservedSize: 52,
                                 interval: chartMaxY / 4,
                                 getTitlesWidget: (value, meta) {
-                                  if (value == meta.min ||
-                                      value == meta.max) {
+                                  if (value == meta.min || value == meta.max) {
                                     return const SizedBox.shrink();
                                   }
                                   final label = value >= 1000
                                       ? '$currency${(value / 1000).toStringAsFixed(1)}k'
-                                      : formatMoney(value, currency: currency, decimals: 0);
+                                      : formatMoney(
+                                          value,
+                                          currency: currency,
+                                          decimals: 0,
+                                        );
                                   return Text(
                                     label,
                                     style: const TextStyle(
@@ -435,7 +566,7 @@ class _InvoiceStatsScreenState extends State<InvoiceStatsScreen> {
                           ),
                           borderData: FlBorderData(show: false),
                           minX: 1,
-                          maxX: daysInMonth.toDouble(),
+                          maxX: days.length.toDouble(),
                           minY: 0,
                           maxY: chartMaxY,
                           lineBarsData: [
@@ -461,8 +592,11 @@ class _InvoiceStatsScreenState extends State<InvoiceStatsScreen> {
                           Expanded(
                             child: _StatCard(
                               label: 'Gemiddeld',
-                              value:
-                                  formatMoney(avgValue, currency: currency, decimals: 0),
+                              value: formatMoney(
+                                avgValue,
+                                currency: currency,
+                                decimals: 0,
+                              ),
                               icon: Icons.calculate_outlined,
                               color: AppTheme.primary,
                             ),
@@ -471,8 +605,11 @@ class _InvoiceStatsScreenState extends State<InvoiceStatsScreen> {
                           Expanded(
                             child: _StatCard(
                               label: 'BTW afdracht',
-                              value:
-                                  formatMoney(taxTotal, currency: currency, decimals: 0),
+                              value: formatMoney(
+                                taxTotal,
+                                currency: currency,
+                                decimals: 0,
+                              ),
                               icon: Icons.account_balance_outlined,
                               color: const Color(0xFFF59E0B),
                             ),
@@ -531,7 +668,11 @@ class _InvoiceStatsScreenState extends State<InvoiceStatsScreen> {
                             child: _StatCard(
                               label: 'Grootste factuur',
                               value: largestInvoice != null
-                                  ? formatMoney(largestInvoice.totaalInclBtw, currency: currency, decimals: 0)
+                                  ? formatMoney(
+                                      largestInvoice.totaalInclBtw,
+                                      currency: currency,
+                                      decimals: 0,
+                                    )
                                   : '—',
                               icon: Icons.trending_up_rounded,
                               color: AppTheme.primary,
@@ -587,7 +728,7 @@ class _InvoiceStatsScreenState extends State<InvoiceStatsScreen> {
                       ),
                       child: Center(
                         child: Text(
-                          'Geen facturen in ${DateFormat('MMMM yyyy').format(_selectedMonth)}',
+                          'Geen facturen in $periodLabel',
                           textAlign: TextAlign.center,
                           style: const TextStyle(
                             color: AppTheme.textSecondary,
@@ -640,14 +781,23 @@ class _SummaryRow extends StatelessWidget {
     padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
     child: Row(
       children: [
-        _Cell('Totaal', formatMoney(total, currency: currency, decimals: 0),
-            AppTheme.onSurface(context)),
+        _Cell(
+          'Totaal',
+          formatMoney(total, currency: currency, decimals: 0),
+          AppTheme.onSurface(context),
+        ),
         _divider(context),
-        _Cell('Betaald', formatMoney(paid, currency: currency, decimals: 0),
-            const Color(0xFF10B981)),
+        _Cell(
+          'Betaald',
+          formatMoney(paid, currency: currency, decimals: 0),
+          const Color(0xFF10B981),
+        ),
         _divider(context),
-        _Cell('Openstaand', formatMoney((total - paid), currency: currency, decimals: 0),
-            AppTheme.error),
+        _Cell(
+          'Openstaand',
+          formatMoney((total - paid), currency: currency, decimals: 0),
+          AppTheme.error,
+        ),
         _divider(context),
         _Cell('Aantal', '$count', AppTheme.onSurfaceVariant(context)),
       ],
@@ -671,9 +821,10 @@ class _Cell extends StatelessWidget {
   Widget build(BuildContext context) => Column(
     crossAxisAlignment: CrossAxisAlignment.start,
     children: [
-      Text(label,
-          style:
-              const TextStyle(color: AppTheme.textSecondary, fontSize: 11)),
+      Text(
+        label,
+        style: const TextStyle(color: AppTheme.textSecondary, fontSize: 11),
+      ),
       Text(
         value,
         style: TextStyle(
@@ -811,10 +962,7 @@ class _StatCard extends StatelessWidget {
           const SizedBox(height: 2),
           Text(
             subtitle ?? '',
-            style: const TextStyle(
-              fontSize: 11,
-              color: AppTheme.textSecondary,
-            ),
+            style: const TextStyle(fontSize: 11, color: AppTheme.textSecondary),
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
           ),
@@ -908,10 +1056,7 @@ class _StatusRow extends StatelessWidget {
             Container(
               width: 8,
               height: 8,
-              decoration: BoxDecoration(
-                color: color,
-                shape: BoxShape.circle,
-              ),
+              decoration: BoxDecoration(color: color, shape: BoxShape.circle),
             ),
             const SizedBox(width: 8),
             Expanded(

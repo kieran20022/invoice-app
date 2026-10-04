@@ -5,13 +5,18 @@ import 'package:invoices/screens/invoices/movable_invoice_card.dart';
 void main() {
   late List<String> log;
 
-  Future<void> pumpCard(WidgetTester tester, {bool payable = true}) async {
+  Future<void> pumpCard(
+    WidgetTester tester, {
+    bool payable = true,
+    bool swipeEnabled = true,
+  }) async {
     log = [];
     await tester.pumpWidget(
       MaterialApp(
         home: Scaffold(
           body: MovableInvoiceCard(
             onDelete: () => log.add('delete'),
+            swipeEnabled: swipeEnabled,
             swipeUp: payable
                 ? MovableCardAction(
                     label: 'Contant',
@@ -88,8 +93,9 @@ void main() {
     expect(find.text('Contant'), findsNothing);
   });
 
-  testWidgets('a right swipe with no direction to it does nothing',
-      (tester) async {
+  testWidgets('a right swipe with no direction to it does nothing', (
+    tester,
+  ) async {
     await pumpCard(tester);
     await swipe(tester, 110);
     expect(log, isEmpty);
@@ -101,6 +107,16 @@ void main() {
     expect(log, isEmpty);
 
     await swipe(tester, -30);
+    expect(log, isEmpty);
+  });
+
+  testWidgets('swiping does nothing while the list is selecting', (
+    tester,
+  ) async {
+    await pumpCard(tester, swipeEnabled: false);
+    await swipe(tester, 110, dy: -40);
+    await swipe(tester, 110, dy: 40);
+    await swipe(tester, -110);
     expect(log, isEmpty);
   });
 

@@ -44,12 +44,17 @@ class MovableInvoiceCard extends StatefulWidget {
 
   final VoidCallback onDelete;
 
+  /// False while the list is selecting: a tap then toggles the card, and a
+  /// stray sideways drag must not pay or delete it on the side.
+  final bool swipeEnabled;
+
   const MovableInvoiceCard({
     super.key,
     required this.child,
     this.swipeUp,
     this.swipeDown,
     required this.onDelete,
+    this.swipeEnabled = true,
   });
 
   @override
@@ -185,9 +190,9 @@ class _MovableInvoiceCardState extends State<MovableInvoiceCard>
         color: Theme.of(context).cardColor,
         child: GestureDetector(
           behavior: HitTestBehavior.opaque,
-          onHorizontalDragStart: _onDragStart,
-          onHorizontalDragUpdate: _onDragUpdate,
-          onHorizontalDragEnd: _onDragEnd,
+          onHorizontalDragStart: widget.swipeEnabled ? _onDragStart : null,
+          onHorizontalDragUpdate: widget.swipeEnabled ? _onDragUpdate : null,
+          onHorizontalDragEnd: widget.swipeEnabled ? _onDragEnd : null,
           child: Stack(
             children: [
               // What the card uncovers as it moves. Only the side being

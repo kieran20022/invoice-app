@@ -10,7 +10,9 @@ Invoice app. Used for generating invoices for clients. Simple interface where us
 4. Client information: Input client name, company, address, email, phone.
 5. Invoice details: Services/products billed, amounts, notes, terms, tax rate, issue date, due date.
 6. Invoice generation: Professional PDF invoice — 3 templates (Modern, Classic, Minimal). Download as PDF or send via email/WhatsApp.
-7. Invoice history: List of all invoices with search, filter by status (draft/paid/quotes), and revenue stats. A card is swiped right and up for Contant Betaald, right and down for Pin Betaald, and left to delete.
+7. Invoice history: List of all invoices with search, filter by status (draft/paid/quotes), and revenue stats. A card is swiped right and up for Contant Betaald, right and down for Pin Betaald, and left to delete. Long-pressing a card starts a selection; the bar that
+   replaces the search field shares or downloads the selected PDFs, marks them
+   Contant/Pin betaald, or deletes them.
 8. Products: Saved product/service list with name, description, price, unit. Organised in categories and optional sub-categories (created when adding a product, or in bulk by long-pressing products in one category and selecting them). Quickly added to invoices.
 9. Custom one-time products: Custom items added to invoices without saving to product list.
 10. Voertuigen: Vehicles currently in the shop, each tied to a "current" invoice. Adding a vehicle (phone number + optional name + plate, geel or blauw)
@@ -341,6 +343,13 @@ paid state, from before the method was recorded, and still counts everywhere.
   stats chart. Used by the swipe panel, both status badges and the stats
   screen.
 
+The stats screen covers one or more months, picked in the title's month grid
+(toggled on and off, across years, applied with "Toepassen"; "Hele jaar" ticks
+the shown year). The chart is always day by day: the selected months' days are
+laid end to end in calendar order (loose months sit side by side, without the
+gap between them). With several months the axis labels where each month starts
+and the tooltip shows the date.
+
 The stats screen keeps the two apart throughout: separate chart lines (with
 the paid line split in two), a Contant and a Pin card under Analyse showing
 what came in each way, and their own rows in the status breakdown. Invoices
@@ -376,6 +385,22 @@ Details worth keeping:
 - The `AnimationController` is built in `initState`, not lazily: a card that is
   never swiped would otherwise have its controller created by its own
   `dispose()`, which throws.
+
+### Selecting cards
+
+A long-press ticks a card and puts the list into selection mode: taps toggle
+cards instead of opening them, the badge menus go inert, and the swipe is off
+(`swipeEnabled: false`) so a stray drag cannot pay or delete a card on the
+side. A bar stands in for the search field and filter chips, with select-all
+(the list as currently filtered), **share** (one document goes out exactly as
+the preview's "Versturen" sends it; several go out together through
+`EmailService.shareInvoices` - `ACTION_SEND_MULTIPLE` on Android, each URI
+granted like a single share - under a subject listing their numbers, since the
+email template speaks about one invoice), **download** (each PDF saved to Downloads
+through `DownloadService` under its `pdfFilename`), **mark paid** (Contant or
+Pin; quotes are skipped, and invoices already paid that way are left alone so
+they keep their `paidAt`) and **delete** (one confirmation for the lot). Back
+or the ✕ ends the selection.
 
 Covered by `test/movable_card_test.dart`, which drives the real gestures.
 
