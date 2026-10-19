@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:uuid/uuid.dart';
@@ -5,6 +7,9 @@ import '../../config/theme.dart';
 import '../../models/product.dart';
 import '../../providers/business_provider.dart';
 import '../../providers/product_provider.dart';
+import '../../services/download_service.dart';
+import '../../services/email_service.dart';
+import '../../services/price_list_service.dart';
 import '../../utils/price.dart';
 import '../../widgets/category_selector.dart';
 import '../../widgets/reorder_screen.dart';
@@ -37,6 +42,9 @@ class _ProductsScreenState extends State<ProductsScreen> {
   final _searchCtrl = TextEditingController();
   final _searchFocusNode = FocusNode();
   String _query = '';
+
+  /// A prijslijst is being built and handed over; its buttons wait meanwhile.
+  bool _busy = false;
 
   @override
   void initState() {
@@ -119,6 +127,128 @@ class _ProductsScreenState extends State<ProductsScreen> {
     }
     return results;
   }
+
+  // ── Prijslijst ────────────────────────────────────────────────────────────
+
+  /// The products as the prijslijst lists them: in the tab's own order, one
+  /// section per (category, sub-category). [only] limits it to those ids.
+  List<({String heading, List<Product> products})> _priceListSections(
+    List<Product> allProducts, {
+    Set<String>? only,
+  }) {
+    List<Product> pick(List<Product> list) =>
+        (only == null ? list : list.where((p) => only.contains(p.id)).toList())
+          ..sort(compareProducts);
+    final sections = <({String heading, List<Product> products})>[];
+    for (final cat in _orderedCategories) {
+      for (final sub in [
+        ...orderedSubCategoriesIn(allProducts, cat, _subOrder),
+        '',
+      ]) {
+        final products = pick(productsIn(allProducts, cat, sub));
+        if (products.isEmpty) continue;
+        sections.add((
+          heading: sub.isEmpty
+              ? _toTitleCase(cat)
+              : '${_toTitleCase(cat)} › ${_toTitleCase(sub)}',
+          products: products,
+        ));
+      }
+    }
+    final uncategorized = pick(_uncategorized(allProducts));
+    if (uncategorized.isNotEmpty) {
+      // Without any categories a heading would only repeat the title.
+      sections.add((
+        heading: _orderedCategories.isEmpty ? '' : 'Overig',
+        products: uncategorized,
+      ));
+    }
+    return sections;
+  }
+
+  /// Builds the prijslijst — of the selection when one is active, otherwise
+  /// of every product — and shares it or saves it to Downloads.
+  Future<void> _exportPriceList({required bool share}) async {
+    if (_busy) return;
+    final business = context.read<BusinessProvider>();
+    final allProducts = context.read<ProductProvider>().products;
+    final selection = _isSelecting ? Set<String>.from(_selected) : null;
+    final sections = _priceListSections(allProducts, only: selection);
+    if (sections.isEmpty) return;
+
+    final info = business.businessInfo;
+    final scope = selection != null
+        ? _toTitleCase(_selectionCategory ?? '')
+        : info?.name ?? '';
+    final title = [
+      'Prijslijst',
+      scope.replaceAll(RegExp(r'[\\/:*?"<>|]'), '-').trim(),
+    ].where((p) => p.isNotEmpty).join(' - ');
+    final messenger = ScaffoldMessenger.of(context);
+
+    setState(() => _busy = true);
+    try {
+      final bytes = utf8.encode(PriceListService.buildMarkdown(
+        business: info,
+        sections: sections,
+        taxRate: info?.defaultTaxRate ?? 21.0,
+      ));
+      if (share) {
+        await EmailService.shareFile(
+          bytes: bytes,
+          filename: '$title.md',
+          mimeType: 'text/markdown',
+          subject: title,
+        );
+      } else {
+        final location = await DownloadService.save(
+          bytes: bytes,
+          filename: '$title.md',
+          mimeType: 'text/markdown',
+        );
+        messenger.showSnackBar(
+          SnackBar(content: Text('Opgeslagen in $location')),
+        );
+      }
+      if (mounted && selection != null) _exitSelection();
+    } catch (e) {
+      messenger.showSnackBar(
+        SnackBar(
+          content: Text(
+            share ? 'Delen mislukt: $e' : 'Downloaden mislukt: $e',
+          ),
+          backgroundColor: AppTheme.error,
+        ),
+      );
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  Widget _priceListMenu() => PopupMenuButton<bool>(
+        icon: const Icon(Icons.more_vert),
+        tooltip: 'Prijslijst',
+        enabled: !_busy,
+        onSelected: (share) => _exportPriceList(share: share),
+        itemBuilder: (_) => const [
+          PopupMenuItem(
+            value: true,
+            child: ListTile(
+              leading: Icon(Icons.share_outlined),
+              title: Text('Prijslijst delen'),
+              contentPadding: EdgeInsets.zero,
+            ),
+          ),
+          PopupMenuItem(
+            value: false,
+            child: ListTile(
+              leading: Icon(Icons.download_outlined),
+              title: Text('Prijslijst downloaden'),
+              contentPadding: EdgeInsets.zero,
+            ),
+          ),
+        ],
+      );
 
   // ── Selection mode ────────────────────────────────────────────────────────
 
@@ -233,7 +363,17 @@ class _ProductsScreenState extends State<ProductsScreen> {
                   ],
                 ),
               ),
-              const SizedBox(width: 8),
+              IconButton(
+                icon: const Icon(Icons.share_outlined),
+                tooltip: 'Prijslijst delen',
+                onPressed: _busy ? null : () => _exportPriceList(share: true),
+              ),
+              IconButton(
+                icon: const Icon(Icons.download_outlined),
+                tooltip: 'Prijslijst downloaden',
+                onPressed: _busy ? null : () => _exportPriceList(share: false),
+              ),
+              const SizedBox(width: 4),
               FilledButton.icon(
                 onPressed: () => _assignSubCategory(
                   context.read<ProductProvider>().products,
@@ -375,7 +515,7 @@ class _ProductsScreenState extends State<ProductsScreen> {
     return Builder(
       builder: (context) => Container(
         color: AppTheme.surf(context),
-        padding: EdgeInsets.fromLTRB(16, 12, showSort ? 4 : 16, 8),
+        padding: const EdgeInsets.fromLTRB(16, 12, 4, 8),
         child: Row(
           children: [
             Expanded(
@@ -419,6 +559,7 @@ class _ProductsScreenState extends State<ProductsScreen> {
                 tooltip: 'Volgorde aanpassen',
                 onPressed: onSort,
               ),
+            _priceListMenu(),
           ],
         ),
       ),

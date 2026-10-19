@@ -13,7 +13,11 @@ Invoice app. Used for generating invoices for clients. Simple interface where us
 7. Invoice history: List of all invoices with search, filter by status (draft/paid/quotes), and revenue stats. A card is swiped right and up for Contant Betaald, right and down for Pin Betaald, and left to delete. Long-pressing a card starts a selection; the bar that
    replaces the search field shares or downloads the selected PDFs, marks them
    Contant/Pin betaald, or deletes them.
-8. Products: Saved product/service list with name, description, price, unit. Organised in categories and optional sub-categories (created when adding a product, or in bulk by long-pressing products in one category and selecting them). Quickly added to invoices.
+8. Products: Saved product/service list with name, description, price, unit. Organised in categories and optional sub-categories (created when adding a product, or in bulk by long-pressing products in one category and selecting them). Quickly added to invoices. The ⋮ beside the search field
+   shares or downloads the list as a Markdown prijslijst
+   (`PriceListService.buildMarkdown`, `.md`), written to be read by an AI
+   assistant as well as a person; during a selection the bar's share and
+   download buttons do the same for just the selected products.
 9. Custom one-time products: Custom items added to invoices without saving to product list.
 10. Voertuigen: Vehicles currently in the shop, each tied to a "current" invoice. Adding a vehicle (phone number + optional name + plate, geel or blauw)
     immediately creates its invoice in the workshop buffer; tapping the vehicle opens that invoice at the Producten step, and closing the screen persists the items added. The card shows the name when there is one, the number otherwise. The ⋮ menu has "Concept delen" (shares the still-unnumbered PDF), "Afronden" (takes the vehicle out of the shop, numbers its invoice and releases it into the Facturen tab), "Afronden en delen" (the same, then opens the share sheet for the numbered invoice) and "Verwijderen" (throws the record away — vehicle *and* invoice — so nothing reaches the Facturen tab and no invoice number is used).
@@ -89,6 +93,7 @@ lib/
     firestore_service.dart     CRUD for all Firestore collections
     storage_service.dart       Firebase Storage upload/delete for logo
     pdf_service.dart           3 PDF templates (Modern, Classic, Minimal)
+    price_list_service.dart    Prijslijst as Markdown (AI-friendly export)
     email_service.dart         shareInvoice() via Share.shareXFiles + cloud function
     excel_service.dart         Inkomsten overzicht: xlsx built as raw OOXML
     download_service.dart      Saves an export to Downloads (per-platform)
@@ -301,6 +306,20 @@ our own control without pulling in a dependency.
   MediaStore does this itself; the other platforms do it in code.
 
 Covered by `test/income_overview_test.dart`.
+
+## Prijslijst (Markdown)
+
+The Producten tab exports its list as Markdown (`text/markdown`, `.md`), not
+PDF, so it can be handed to an AI assistant as-is: a PDF's text has to be
+scraped back out of its layout, CSV cannot carry the category headings without
+repeating them per row, and JSON is noisy for a person. The file is a title, a
+short list of facts (business, date, currency as an ISO code, BTW rate, what
+the prices mean), then one `##` heading per (category › sub-category) over a
+pipe table: product, description, unit, price excl. and incl. BTW. Every row
+stands on its own: the columns name their currency, and amounts are plain
+numbers with a decimal point (`12.10`) — no `€` or Dutch comma to misparse.
+Pipes and newlines in names are escaped so they cannot break the table.
+Sections arrive in the tab's own order. Covered by `test/price_list_test.dart`.
 
 ## Money and Number Input
 

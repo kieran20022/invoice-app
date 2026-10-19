@@ -131,6 +131,43 @@ class EmailService {
     );
   }
 
+  /// Shares a file that is not an invoice — the Producten tab's prijslijst —
+  /// through the same share sheet, under [subject] and no further message.
+  static Future<void> shareFile({
+    required Uint8List bytes,
+    required String filename,
+    required String mimeType,
+    required String subject,
+  }) async {
+    if (kIsWeb) {
+      await Share.shareXFiles(
+        [XFile.fromData(bytes, name: filename, mimeType: mimeType)],
+        subject: subject,
+        text: subject,
+      );
+      return;
+    }
+
+    final tempDir = await getTemporaryDirectory();
+    final file = File('${tempDir.path}/$filename');
+    await file.writeAsBytes(bytes, flush: true);
+
+    if (await _shareViaChannel(
+      [file.path],
+      subject,
+      subject,
+      mimeType: mimeType,
+    )) {
+      return;
+    }
+
+    await Share.shareXFiles(
+      [XFile(file.path, mimeType: mimeType)],
+      subject: subject,
+      text: subject,
+    );
+  }
+
   /// [name], or "name (2).pdf" and up once it is already in [used].
   static String _uniqueName(String name, Set<String> used) {
     final dot = name.lastIndexOf('.');
@@ -148,13 +185,14 @@ class EmailService {
   static Future<bool> _shareViaChannel(
     List<String> filePaths,
     String subject,
-    String text,
-  ) async {
+    String text, {
+    String mimeType = 'application/pdf',
+  }) async {
     if (kIsWeb || !Platform.isAndroid) return false;
     try {
       return await _shareChannel.invokeMethod<bool>('shareFile', {
             'filePaths': filePaths,
-            'mimeType': 'application/pdf',
+            'mimeType': mimeType,
             'subject': subject,
             'text': text,
           }) ??

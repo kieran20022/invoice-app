@@ -215,7 +215,7 @@ class PdfService {
               0: const pw.FlexColumnWidth(4),
               1: const pw.FixedColumnWidth(70),
               2: const pw.FixedColumnWidth(90),
-              3: const pw.FixedColumnWidth(90),
+              3: const pw.FixedColumnWidth(110),
             },
             children: [
               pw.TableRow(
@@ -223,8 +223,8 @@ class PdfService {
                 children: [
                   _th('Omschrijving'),
                   _th('Aantal', align: pw.TextAlign.center),
-                  _th('Prijs ex. BTW', align: pw.TextAlign.right),
                   _th('Prijs incl. BTW', align: pw.TextAlign.right),
+                  _th('Totaal', align: pw.TextAlign.right),
                 ],
               ),
               ...invoice.items.map(
@@ -242,11 +242,15 @@ class PdfService {
                     ),
                     _td(item.aantalLabel, align: pw.TextAlign.center),
                     _td(
-                      _fmt(invoice, item.prijsExBtw),
+                      _fmt(invoice, item.prijsInclBtw(invoice.taxRate)),
                       align: pw.TextAlign.right,
                     ),
                     _td(
-                      _fmt(invoice, item.prijsInclBtw(invoice.taxRate)),
+                      _fmtRange(
+                        invoice,
+                        item.totalInclBtw(invoice.taxRate),
+                        item.totalInclBtwMax(invoice.taxRate),
+                      ),
                       align: pw.TextAlign.right,
                     ),
                   ],
