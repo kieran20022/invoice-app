@@ -14,9 +14,9 @@ Invoice app. Used for generating invoices for clients. Simple interface where us
    replaces the search field shares or downloads the selected PDFs, marks them
    Contant/Pin betaald, or deletes them.
 8. Products: Saved product/service list with name, description, price, unit. Organised in categories and optional sub-categories (created when adding a product, or in bulk by long-pressing products in one category and selecting them). Quickly added to invoices. The ⋮ beside the search field
-   shares or downloads the list as a Markdown prijslijst
-   (`PriceListService.buildMarkdown`, `.md`), written to be read by an AI
-   assistant as well as a person; during a selection the bar's share and
+   shares or downloads the list as a CSV prijslijst
+   (`PriceListService.buildCsv`, `.csv`), written to be read by an AI
+   assistant; during a selection the bar's share and
    download buttons do the same for just the selected products.
 9. Custom one-time products: Custom items added to invoices without saving to product list.
 10. Voertuigen: Vehicles currently in the shop, each tied to a "current" invoice. Adding a vehicle (phone number + optional name + plate, geel or blauw)
@@ -93,7 +93,7 @@ lib/
     firestore_service.dart     CRUD for all Firestore collections
     storage_service.dart       Firebase Storage upload/delete for logo
     pdf_service.dart           3 PDF templates (Modern, Classic, Minimal)
-    price_list_service.dart    Prijslijst as Markdown (AI-friendly export)
+    price_list_service.dart    Prijslijst as CSV (AI-friendly export)
     email_service.dart         shareInvoice() via Share.shareXFiles + cloud function
     excel_service.dart         Inkomsten overzicht: xlsx built as raw OOXML
     download_service.dart      Saves an export to Downloads (per-platform)
@@ -307,19 +307,19 @@ our own control without pulling in a dependency.
 
 Covered by `test/income_overview_test.dart`.
 
-## Prijslijst (Markdown)
+## Prijslijst (CSV)
 
-The Producten tab exports its list as Markdown (`text/markdown`, `.md`), not
-PDF, so it can be handed to an AI assistant as-is: a PDF's text has to be
-scraped back out of its layout, CSV cannot carry the category headings without
-repeating them per row, and JSON is noisy for a person. The file is a title, a
-short list of facts (business, date, currency as an ISO code, BTW rate, what
-the prices mean), then one `##` heading per (category › sub-category) over a
-pipe table: product, description, unit, price excl. and incl. BTW. Every row
-stands on its own: the columns name their currency, and amounts are plain
-numbers with a decimal point (`12.10`) — no `€` or Dutch comma to misparse.
-Pipes and newlines in names are escaped so they cannot break the table.
-Sections arrive in the tab's own order. Covered by `test/price_list_test.dart`.
+The Producten tab exports its list as CSV (`text/csv`, `.csv`), not PDF, so it
+can be handed to an AI assistant as plain data. It is one flat table, one row
+per product: Categorie, Subcategorie, Product, Omschrijving, Eenheid, Prijs
+excl. BTW, BTW %, Prijs incl. BTW. Category and sub-category are columns
+rather than headings so every row stands on its own (empty for an
+uncategorised product); the price headers name the currency as an ISO code
+(`Prijs incl. BTW (EUR)`), and amounts are plain numbers with a decimal point
+(`12.10`) — no `€` or Dutch comma to misparse. Written as RFC 4180:
+comma-separated, CRLF line ends, fields quoted when they hold a comma, quote
+or line break. Rows follow the tab's own order. Covered by
+`test/price_list_test.dart`.
 
 ## Money and Number Input
 

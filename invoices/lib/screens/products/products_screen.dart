@@ -132,14 +132,16 @@ class _ProductsScreenState extends State<ProductsScreen> {
 
   /// The products as the prijslijst lists them: in the tab's own order, one
   /// section per (category, sub-category). [only] limits it to those ids.
-  List<({String heading, List<Product> products})> _priceListSections(
+  List<({String category, String subCategory, List<Product> products})>
+      _priceListSections(
     List<Product> allProducts, {
     Set<String>? only,
   }) {
     List<Product> pick(List<Product> list) =>
         (only == null ? list : list.where((p) => only.contains(p.id)).toList())
           ..sort(compareProducts);
-    final sections = <({String heading, List<Product> products})>[];
+    final sections =
+        <({String category, String subCategory, List<Product> products})>[];
     for (final cat in _orderedCategories) {
       for (final sub in [
         ...orderedSubCategoriesIn(allProducts, cat, _subOrder),
@@ -148,20 +150,15 @@ class _ProductsScreenState extends State<ProductsScreen> {
         final products = pick(productsIn(allProducts, cat, sub));
         if (products.isEmpty) continue;
         sections.add((
-          heading: sub.isEmpty
-              ? _toTitleCase(cat)
-              : '${_toTitleCase(cat)} › ${_toTitleCase(sub)}',
+          category: _toTitleCase(cat),
+          subCategory: _toTitleCase(sub),
           products: products,
         ));
       }
     }
     final uncategorized = pick(_uncategorized(allProducts));
     if (uncategorized.isNotEmpty) {
-      // Without any categories a heading would only repeat the title.
-      sections.add((
-        heading: _orderedCategories.isEmpty ? '' : 'Overig',
-        products: uncategorized,
-      ));
+      sections.add((category: '', subCategory: '', products: uncategorized));
     }
     return sections;
   }
@@ -188,23 +185,23 @@ class _ProductsScreenState extends State<ProductsScreen> {
 
     setState(() => _busy = true);
     try {
-      final bytes = utf8.encode(PriceListService.buildMarkdown(
-        business: info,
+      final bytes = utf8.encode(PriceListService.buildCsv(
         sections: sections,
         taxRate: info?.defaultTaxRate ?? 21.0,
+        currency: info?.currency ?? '€',
       ));
       if (share) {
         await EmailService.shareFile(
           bytes: bytes,
-          filename: '$title.md',
-          mimeType: 'text/markdown',
+          filename: '$title.csv',
+          mimeType: 'text/csv',
           subject: title,
         );
       } else {
         final location = await DownloadService.save(
           bytes: bytes,
-          filename: '$title.md',
-          mimeType: 'text/markdown',
+          filename: '$title.csv',
+          mimeType: 'text/csv',
         );
         messenger.showSnackBar(
           SnackBar(content: Text('Opgeslagen in $location')),
