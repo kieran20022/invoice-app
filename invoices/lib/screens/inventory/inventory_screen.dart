@@ -88,8 +88,10 @@ class _InventoryScreenState extends State<InventoryScreen> {
           ),
         ],
       ),
+      // Never null: the Scaffold animates a button appearing or disappearing,
+      // but swaps two unkeyed ones without a transition.
       floatingActionButton: _showReserved
-          ? null
+          ? const SizedBox.shrink()
           : Row(
               mainAxisSize: MainAxisSize.min,
               children: [
@@ -212,15 +214,51 @@ class _InventoryScreenState extends State<InventoryScreen> {
 
 // ── Voorraad ────────────────────────────────────────────────────────────────
 
-class _StockList extends StatelessWidget {
+/// The products being counted, in the Producten tab's accordion — categories,
+/// then their sub-categories — with a search field above. A search lists the
+/// hits grouped under "Categorie › Subcategorie", as Producten does.
+class _StockList extends StatefulWidget {
   final List<Product> products;
   final InventoryProvider inventory;
 
   const _StockList({required this.products, required this.inventory});
 
   @override
+  State<_StockList> createState() => _StockListState();
+}
+
+class _StockListState extends State<_StockList> {
+  final _searchCtrl = TextEditingController();
+  String _query = '';
+
+  /// Open category ('' = "Overig") and open sub-category, keyed with
+  /// [subCategoryKey] — one of each at a time, as in Producten.
+  String? _expandedCategory;
+  String? _expandedSub;
+
+  @override
+  void initState() {
+    super.initState();
+    _searchCtrl.addListener(() {
+      final q = _searchCtrl.text.trim().toLowerCase();
+      if (q != _query) setState(() => _query = q);
+    });
+  }
+
+  @override
+  void dispose() {
+    _searchCtrl.dispose();
+    super.dispose();
+  }
+
+  List<Product> get _products => widget.products;
+
+  List<Product> get _uncategorized =>
+      _products.where((p) => p.category.isEmpty).toList();
+
+  @override
   Widget build(BuildContext context) {
-    if (products.isEmpty) {
+    if (_products.isEmpty) {
       return const _Empty(
         icon: Icons.warehouse_outlined,
         title: 'Nog niets in de voorraad',
@@ -229,13 +267,187 @@ class _StockList extends StatelessWidget {
             'andere diensten laat je er gewoon buiten.',
       );
     }
-    return ListView.separated(
-      padding: const EdgeInsets.fromLTRB(16, 8, 16, 96),
-      itemCount: products.length,
-      separatorBuilder: (_, _) => const SizedBox(height: 8),
-      itemBuilder: (_, i) => _StockRow(
-        product: products[i],
-        reserved: inventory.reservedFor(products[i].id),
+
+    final business = context.watch<BusinessProvider>();
+    final subOrder = business.subCategoryOrder;
+    final present =
+        _products.map((p) => p.category).where((c) => c.isNotEmpty).toSet();
+    final categories = business.categoryOrder.where(present.contains).toList()
+      ..addAll(present.difference(business.categoryOrder.toSet()).toList()
+        ..sort());
+
+    return Column(
+      children: [
+        _searchField(),
+        const Divider(height: 1),
+        Expanded(
+          child: CustomScrollView(
+            keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+            slivers: [
+              ...(_query.isNotEmpty
+                  ? _searchSlivers(categories, subOrder)
+                  : categories.isEmpty
+                      ? [_rowSliver(_uncategorized)]
+                      : _accordionSlivers(categories, subOrder)),
+              // Room for the buttons floating over the list.
+              const SliverToBoxAdapter(child: SizedBox(height: 96)),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _searchField() {
+    return Container(
+      color: AppTheme.surf(context),
+      padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+      child: TextField(
+        controller: _searchCtrl,
+        textInputAction: TextInputAction.search,
+        decoration: InputDecoration(
+          hintText: 'Zoeken op categorie of product...',
+          prefixIcon: const Icon(Icons.search, size: 20),
+          contentPadding: const EdgeInsets.symmetric(vertical: 10),
+          fillColor: AppTheme.bg(context),
+          filled: true,
+          border: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(10),
+            borderSide: BorderSide(color: AppTheme.borderOf(context)),
+          ),
+          enabledBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(10),
+            borderSide: BorderSide(color: AppTheme.borderOf(context)),
+          ),
+          focusedBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(10),
+            borderSide: const BorderSide(color: AppTheme.primary, width: 2),
+          ),
+          suffixIcon: _query.isNotEmpty
+              ? IconButton(
+                  icon: const Icon(Icons.clear, size: 18),
+                  onPressed: _searchCtrl.clear,
+                )
+              : null,
+        ),
+      ),
+    );
+  }
+
+  List<Widget> _accordionSlivers(List<String> categories, List<String> subOrder) {
+    final uncategorized = _uncategorized;
+    return [
+      for (final cat in categories) ...[
+        _categoryHeader(cat, _products.where((p) => p.category == cat).length),
+        if (_expandedCategory == cat) ..._categoryBody(cat, subOrder),
+      ],
+      if (uncategorized.isNotEmpty) ...[
+        _categoryHeader('', uncategorized.length),
+        if (_expandedCategory == '') _rowSliver(uncategorized),
+      ],
+    ];
+  }
+
+  Widget _categoryHeader(String cat, int count) {
+    return SliverToBoxAdapter(
+      child: CategoryHeader(
+        label: cat.isEmpty ? 'Overig' : toTitleCase(cat),
+        count: count,
+        isExpanded: _expandedCategory == cat,
+        onTap: () => setState(() {
+          _expandedCategory = _expandedCategory == cat ? null : cat;
+          _expandedSub = null;
+        }),
+      ),
+    );
+  }
+
+  /// A category's sub-category headers, then its "Overig" bucket — or just
+  /// its products when it has no sub-categories.
+  List<Widget> _categoryBody(String cat, List<String> subOrder) {
+    final subs = orderedSubCategoriesIn(_products, cat, subOrder);
+    final loose = productsIn(_products, cat, '');
+    if (subs.isEmpty) return [_rowSliver(loose)];
+
+    final slivers = <Widget>[];
+    for (final sub in [...subs, '']) {
+      final products = sub.isEmpty ? loose : productsIn(_products, cat, sub);
+      if (products.isEmpty) continue;
+      final key = subCategoryKey(cat, sub);
+      slivers.add(SliverToBoxAdapter(
+        child: SubCategoryHeader(
+          label: sub.isEmpty ? 'Overig' : toTitleCase(sub),
+          count: products.length,
+          isExpanded: _expandedSub == key,
+          onTap: () => setState(
+            () => _expandedSub = _expandedSub == key ? null : key,
+          ),
+        ),
+      ));
+      if (_expandedSub == key) slivers.add(_rowSliver(products));
+    }
+    return slivers;
+  }
+
+  /// One group per (category, sub-category) with hits. A matching category
+  /// or sub-category name shows everything filed under it.
+  List<Widget> _searchSlivers(List<String> categories, List<String> subOrder) {
+    final q = _query;
+    bool matches(Product p) =>
+        p.name.toLowerCase().contains(q) ||
+        p.description.toLowerCase().contains(q);
+
+    final slivers = <Widget>[];
+    void addGroup(String label, List<Product> group) {
+      if (group.isEmpty) return;
+      slivers
+        ..add(SliverToBoxAdapter(child: _SearchGroupHeader(label: label)))
+        ..add(_rowSliver(group));
+    }
+
+    for (final cat in categories) {
+      final catMatches = cat.toLowerCase().contains(q);
+      for (final sub in [
+        ...orderedSubCategoriesIn(_products, cat, subOrder),
+        '',
+      ]) {
+        final group = productsIn(_products, cat, sub);
+        final subMatches = sub.isNotEmpty && sub.toLowerCase().contains(q);
+        addGroup(
+          sub.isEmpty
+              ? toTitleCase(cat)
+              : '${toTitleCase(cat)} › ${toTitleCase(sub)}',
+          catMatches || subMatches ? group : group.where(matches).toList(),
+        );
+      }
+    }
+    addGroup('Overig', _uncategorized.where(matches).toList());
+
+    if (slivers.isEmpty) {
+      slivers.add(SliverToBoxAdapter(
+        child: Padding(
+          padding: const EdgeInsets.all(32),
+          child: Text(
+            'Geen resultaten voor "${_searchCtrl.text.trim()}".',
+            textAlign: TextAlign.center,
+            style: TextStyle(color: AppTheme.onSurfaceVariant(context)),
+          ),
+        ),
+      ));
+    }
+    return slivers;
+  }
+
+  Widget _rowSliver(List<Product> products) {
+    return SliverPadding(
+      padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+      sliver: SliverList.separated(
+        itemCount: products.length,
+        separatorBuilder: (_, _) => const SizedBox(height: 8),
+        itemBuilder: (_, i) => _StockRow(
+          product: products[i],
+          reserved: widget.inventory.reservedFor(products[i].id),
+        ),
       ),
     );
   }
@@ -256,11 +468,8 @@ class _StockRow extends StatelessWidget {
         : stock == 0
             ? const Color(0xFFF59E0B)
             : AppTheme.onSurface(context);
+    // The category is the header the row sits under, so it is not repeated.
     final details = [
-      if (product.category.isNotEmpty)
-        product.subCategory.isEmpty
-            ? product.category
-            : '${product.category} › ${product.subCategory}',
       if (reserved > 0) '${formatStock(reserved)} gereserveerd',
     ];
 
@@ -280,8 +489,6 @@ class _StockRow extends StatelessWidget {
                       fontWeight: FontWeight.w600,
                       fontSize: 14,
                     ),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
                   ),
                   if (details.isNotEmpty)
                     Text(

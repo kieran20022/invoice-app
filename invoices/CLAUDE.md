@@ -340,7 +340,10 @@ or line break. Rows follow the tab's own order. Covered by
 
 A product joins the inventory with `trackStock: true` (the Voorraad tab's
 "Producten toevoegen", or the switch in the product form); `stock` is what is
-**on the shelf**, already net of what open invoices took. The "Producten
+**on the shelf**, already net of what open invoices took. The stock list is
+laid out like Producten — a search field over the category / sub-category
+accordion, in the order set there, with search hits grouped under
+"Categorie › Subcategorie" — so a row does not repeat its category. The "Producten
 toevoegen" picker uses the same category / sub-category accordion as Producten
 (`CategoryHeader` / `SubCategoryHeader` in `widgets/category_selector.dart`),
 and each header has a tick box that selects everything under it, showing a
