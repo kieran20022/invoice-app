@@ -91,6 +91,132 @@ class CategorySelectorField extends StatelessWidget {
   }
 }
 
+/// Tick box on an accordion header that selects everything under it: ticked
+/// when all of it is selected, a dash when only part is ([selected] null).
+/// Tapping it selects the lot, or clears it when all was already selected.
+class _GroupCheckbox extends StatelessWidget {
+  final bool? selected;
+  final ValueChanged<bool> onSelect;
+
+  const _GroupCheckbox({required this.selected, required this.onSelect});
+
+  @override
+  Widget build(BuildContext context) {
+    return Checkbox(
+      value: selected,
+      tristate: true,
+      visualDensity: VisualDensity.compact,
+      onChanged: (_) => onSelect(selected != true),
+    );
+  }
+}
+
+/// Accordion header for a category. Shared by the products screen, the invoice
+/// product picker and the inventory's product picker.
+class CategoryHeader extends StatelessWidget {
+  final String label;
+  final int count;
+  final bool isExpanded;
+  final VoidCallback onTap;
+
+  /// Shows a rename button while the header is open. Null for the "Overig"
+  /// bucket, which is not a real category, and where the list is only there
+  /// to pick from.
+  final VoidCallback? onRename;
+
+  /// Puts a tick box before the label that selects the whole category. See
+  /// [_GroupCheckbox] for [selected].
+  final ValueChanged<bool>? onSelect;
+  final bool? selected;
+
+  const CategoryHeader({
+    super.key,
+    required this.label,
+    required this.count,
+    required this.isExpanded,
+    required this.onTap,
+    this.onRename,
+    this.onSelect,
+    this.selected = false,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: AppTheme.surf(context),
+      child: InkWell(
+        onTap: onTap,
+        child: Container(
+          height: 52,
+          padding: EdgeInsets.only(left: onSelect != null ? 4 : 16, right: 16),
+          decoration: BoxDecoration(
+            border: Border(
+              bottom: BorderSide(
+                color: isExpanded
+                    ? AppTheme.primary.withAlpha(80)
+                    : AppTheme.borderOf(context),
+              ),
+            ),
+          ),
+          child: Row(
+            children: [
+              if (onSelect != null) ...[
+                _GroupCheckbox(selected: selected, onSelect: onSelect!),
+                const SizedBox(width: 4),
+              ],
+              Text(
+                label,
+                style: TextStyle(
+                  fontWeight: FontWeight.w700,
+                  fontSize: 15,
+                  color: isExpanded
+                      ? AppTheme.primary
+                      : AppTheme.onSurface(context),
+                ),
+              ),
+              const SizedBox(width: 8),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                decoration: BoxDecoration(
+                  color: AppTheme.primary.withAlpha(isExpanded ? 30 : 18),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Text(
+                  '$count',
+                  style: const TextStyle(
+                    fontSize: 11,
+                    color: AppTheme.primary,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+              const Spacer(),
+              if (isExpanded && onRename != null)
+                IconButton(
+                  icon: const Icon(Icons.drive_file_rename_outline, size: 19),
+                  tooltip: 'Hernoemen',
+                  onPressed: onRename,
+                  color: AppTheme.primary,
+                  visualDensity: VisualDensity.compact,
+                ),
+              AnimatedRotation(
+                turns: isExpanded ? 0.5 : 0,
+                duration: const Duration(milliseconds: 200),
+                child: Icon(
+                  Icons.expand_more,
+                  color: isExpanded
+                      ? AppTheme.primary
+                      : AppTheme.onSurfaceVariant(context),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 /// Accordion header for a sub-category. Indented and lighter than the category
 /// header it nests under. Shared by the products screen and the invoice product
 /// picker so both levels look identical in either place.
@@ -104,6 +230,11 @@ class SubCategoryHeader extends StatelessWidget {
   /// only there to pick from, such as the invoice product picker.
   final VoidCallback? onRename;
 
+  /// Puts a tick box in place of the arrow that selects the whole
+  /// sub-category. See [_GroupCheckbox] for [selected].
+  final ValueChanged<bool>? onSelect;
+  final bool? selected;
+
   const SubCategoryHeader({
     super.key,
     required this.label,
@@ -111,6 +242,8 @@ class SubCategoryHeader extends StatelessWidget {
     required this.isExpanded,
     required this.onTap,
     this.onRename,
+    this.onSelect,
+    this.selected = false,
   });
 
   @override
@@ -121,7 +254,7 @@ class SubCategoryHeader extends StatelessWidget {
         onTap: onTap,
         child: Container(
           height: 44,
-          padding: const EdgeInsets.only(left: 32, right: 16),
+          padding: EdgeInsets.only(left: onSelect != null ? 20 : 32, right: 16),
           decoration: BoxDecoration(
             border: Border(
               bottom: BorderSide(color: AppTheme.borderOf(context)),
@@ -129,13 +262,16 @@ class SubCategoryHeader extends StatelessWidget {
           ),
           child: Row(
             children: [
-              Icon(
-                Icons.subdirectory_arrow_right,
-                size: 15,
-                color: isExpanded
-                    ? AppTheme.primary
-                    : AppTheme.onSurfaceVariant(context),
-              ),
+              if (onSelect != null)
+                _GroupCheckbox(selected: selected, onSelect: onSelect!)
+              else
+                Icon(
+                  Icons.subdirectory_arrow_right,
+                  size: 15,
+                  color: isExpanded
+                      ? AppTheme.primary
+                      : AppTheme.onSurfaceVariant(context),
+                ),
               const SizedBox(width: 8),
               // The label and its count share one flexible box so the chevron
               // keeps the same position whatever the label's length.

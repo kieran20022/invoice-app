@@ -186,6 +186,7 @@ class InvoiceProvider extends ChangeNotifier {
     if (_draft!.id.isNotEmpty) {
       await _firestore.saveInvoice(_userId!, _draft!);
       final saved = _draft!;
+      _syncStock(saved.id);
       _draft = null;
       notifyListeners();
       return saved;
@@ -235,6 +236,7 @@ class InvoiceProvider extends ChangeNotifier {
     );
 
     final savedId = await _firestore.saveInvoice(_userId!, invoice);
+    _syncStock(savedId);
     final saved = Invoice(
       id: savedId,
       invoiceNumber: invoice.invoiceNumber,
@@ -281,6 +283,18 @@ class InvoiceProvider extends ChangeNotifier {
   Future<void> deleteInvoice(String invoiceId) async {
     if (_userId == null) return;
     await _firestore.deleteInvoice(_userId!, invoiceId);
+    _syncStock(invoiceId);
+  }
+
+  /// Moves the inventory along with invoice [invoiceId]'s latest write.
+  /// Not awaited: it is a transaction, which needs the server, and the
+  /// invoice itself is saved either way — a shop with bad reception should
+  /// not wait on its stock count to close an invoice.
+  void _syncStock(String invoiceId) {
+    if (_userId == null || invoiceId.isEmpty) return;
+    _firestore.syncInvoiceStock(_userId!, invoiceId).catchError(
+          (Object e) => debugPrint('Voorraad niet bijgewerkt ($invoiceId): $e'),
+        );
   }
 
   /// Formats and consumes the next invoice number for [prefix].
@@ -322,6 +336,7 @@ class InvoiceProvider extends ChangeNotifier {
           : invoice.invoiceNumber,
     );
     await _firestore.saveInvoice(_userId!, released);
+    _syncStock(released.id);
     return released;
   }
 
@@ -359,12 +374,15 @@ class InvoiceProvider extends ChangeNotifier {
       invoiceNumber: await _nextInvoiceNumber(invoicePrefix),
     );
     await _firestore.saveInvoice(_userId!, invoice);
+    _syncStock(invoice.id);
     return invoice;
   }
 
   Future<void> updateStatus(String invoiceId, String status) async {
     if (_userId == null) return;
     await _firestore.updateInvoiceStatus(_userId!, invoiceId, status);
+    // Paying an invoice moves its parts out of the reserved list.
+    _syncStock(invoiceId);
   }
 
   @override

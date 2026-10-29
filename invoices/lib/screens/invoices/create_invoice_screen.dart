@@ -1371,7 +1371,7 @@ class _ProductPickerScreenState extends State<ProductPickerScreen> {
         slivers: [
           for (final cat in _orderedCategories) ...[
             SliverToBoxAdapter(
-              child: _CategoryHeader(
+              child: CategoryHeader(
                 label: _toTitleCase(cat),
                 count: _productsFor(cat).length,
                 isExpanded: _expandedCategory == cat,
@@ -1386,7 +1386,7 @@ class _ProductPickerScreenState extends State<ProductPickerScreen> {
           ],
           if (uncategorized.isNotEmpty) ...[
             SliverToBoxAdapter(
-              child: _CategoryHeader(
+              child: CategoryHeader(
                 label: 'Overig',
                 count: uncategorized.length,
                 isExpanded: _expandedCategory == '',
@@ -1432,84 +1432,6 @@ class _SearchGroupHeader extends StatelessWidget {
   }
 }
 
-class _CategoryHeader extends StatelessWidget {
-  final String label;
-  final int count;
-  final bool isExpanded;
-  final VoidCallback onTap;
-
-  const _CategoryHeader({
-    required this.label,
-    required this.count,
-    required this.isExpanded,
-    required this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Material(
-      color: AppTheme.surf(context),
-      child: InkWell(
-        onTap: onTap,
-        child: Container(
-          height: 52,
-          padding: const EdgeInsets.symmetric(horizontal: 16),
-          decoration: BoxDecoration(
-            border: Border(
-              bottom: BorderSide(
-                color: isExpanded
-                    ? AppTheme.primary.withAlpha(80)
-                    : AppTheme.borderOf(context),
-              ),
-            ),
-          ),
-          child: Row(
-            children: [
-              Text(
-                label,
-                style: TextStyle(
-                  fontWeight: FontWeight.w700,
-                  fontSize: 15,
-                  color: isExpanded
-                      ? AppTheme.primary
-                      : AppTheme.onSurface(context),
-                ),
-              ),
-              const SizedBox(width: 8),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                decoration: BoxDecoration(
-                  color: AppTheme.primary.withAlpha(isExpanded ? 30 : 18),
-                  borderRadius: BorderRadius.circular(10),
-                ),
-                child: Text(
-                  '$count',
-                  style: const TextStyle(
-                    fontSize: 11,
-                    color: AppTheme.primary,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-              ),
-              const Spacer(),
-              AnimatedRotation(
-                turns: isExpanded ? 0.5 : 0,
-                duration: const Duration(milliseconds: 200),
-                child: Icon(
-                  Icons.expand_more,
-                  color: isExpanded
-                      ? AppTheme.primary
-                      : AppTheme.onSurfaceVariant(context),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
 class _ProductTile extends StatelessWidget {
   final Product product;
   final String currency;
@@ -1526,12 +1448,23 @@ class _ProductTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final inclPrice = product.price * (1 + taxRate / 100);
+    final subtitle = [
+      if (product.trackStock) 'Voorraad: ${formatStock(product.stock)}',
+      if (product.description.isNotEmpty) product.description,
+    ].join(' · ');
     return ListTile(
       title: Text(
         product.name,
         style: const TextStyle(fontWeight: FontWeight.w600),
       ),
-      subtitle: product.description.isNotEmpty ? Text(product.description) : null,
+      subtitle: subtitle.isEmpty
+          ? null
+          : Text(
+              subtitle,
+              style: product.trackStock && product.stock <= 0
+                  ? const TextStyle(color: AppTheme.error)
+                  : null,
+            ),
       trailing: Text(
         '${formatMoney(inclPrice, currency: currency)} incl. BTW',
         style: const TextStyle(

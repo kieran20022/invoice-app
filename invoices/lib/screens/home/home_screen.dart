@@ -5,6 +5,7 @@ import '../../providers/business_provider.dart';
 import '../../config/theme.dart';
 import '../invoices/invoice_history_screen.dart';
 import '../invoices/create_invoice_screen.dart';
+import '../inventory/inventory_screen.dart';
 import '../products/products_screen.dart';
 import '../vehicles/vehicles_screen.dart';
 import '../business/business_info_screen.dart';
@@ -23,6 +24,7 @@ class _HomeScreenState extends State<HomeScreen> {
     InvoiceHistoryScreen(),
     VehiclesScreen(),
     ProductsScreen(),
+    InventoryScreen(),
     BusinessInfoScreen(isFirstTime: false),
   ];
 
@@ -125,7 +127,7 @@ class _HomeScreenState extends State<HomeScreen> {
         child: BottomNavigationBar(
           currentIndex: _currentIndex,
           onTap: (i) => setState(() => _currentIndex = i),
-          // Four items would otherwise switch to the shifting style.
+          // Four or more items would otherwise switch to the shifting style.
           type: BottomNavigationBarType.fixed,
           items: const [
             BottomNavigationBarItem(
@@ -139,6 +141,10 @@ class _HomeScreenState extends State<HomeScreen> {
             BottomNavigationBarItem(
               icon: Icon(Icons.inventory_2_outlined),
               label: 'Producten',
+            ),
+            BottomNavigationBarItem(
+              icon: Icon(Icons.warehouse_outlined),
+              label: 'Voorraad',
             ),
             BottomNavigationBarItem(
               icon: Icon(Icons.business_outlined),

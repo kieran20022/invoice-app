@@ -123,6 +123,43 @@ class ProductProvider extends ChangeNotifier {
     await assignSubCategory(ids, to);
   }
 
+  /// Products kept in the Voorraad tab.
+  List<Product> get stockProducts =>
+      _products.where((p) => p.trackStock).toList();
+
+  /// Adds [productIds] to the inventory or takes them out of it.
+  Future<void> setTracking(List<String> productIds, bool trackStock) async {
+    if (_userId == null || productIds.isEmpty) return;
+    final ids = productIds.toSet();
+    _products = _products
+        .map((p) => ids.contains(p.id) ? p.copyWith(trackStock: trackStock) : p)
+        .toList();
+    notifyListeners();
+    await _firestore.saveProductTracking(_userId!, productIds, trackStock);
+  }
+
+  /// Changes a product's stock by [delta] (a delivery, a correction).
+  Future<void> adjustStock(String productId, double delta) async {
+    if (_userId == null || delta == 0) return;
+    await _firestore.adjustProductStock(_userId!, productId, delta);
+  }
+
+  /// Books a supplier delivery read from a purchase invoice. See
+  /// [FirestoreService.receiveDelivery].
+  Future<void> receiveDelivery(
+    Map<String, double> quantities,
+    Map<String, Set<String>> supplierNames,
+  ) async {
+    if (_userId == null) return;
+    await _firestore.receiveDelivery(_userId!, quantities, supplierNames);
+  }
+
+  /// Sets a product's stock to a counted [stock].
+  Future<void> setStock(String productId, double stock) async {
+    if (_userId == null) return;
+    await _firestore.setProductStock(_userId!, productId, stock);
+  }
+
   Future<void> deleteProduct(String productId) async {
     if (_userId == null) return;
     await _firestore.deleteProduct(_userId!, productId);

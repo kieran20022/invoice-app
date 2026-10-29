@@ -38,6 +38,14 @@ Invoice app. Used for generating invoices for clients. Simple interface where us
     the chosen year with its VAT split and totals each quarter beside it,
     cumulative through the year. It is saved to the device's Downloads rather
     than shared.
+15. Voorraad: An inventory of the products the user picks from Producten
+    (labour and other services stay out). A tracked product goes off the
+    shelf as soon as it lands on an invoice; while that invoice is unpaid its
+    parts sit under "Gereserveerd", and when the invoice is deleted they wait
+    there to be put back ("Alles terugzetten", or per line) or written off.
+    A supplier's invoice (a webshop order as PDF) can be read in with the
+    receipt button: its lines are matched to the Voorraad's products, without
+    an LLM, and reviewed before the quantities are booked onto the stock.
 
 # App Workflow
 
@@ -52,7 +60,7 @@ Invoice app. Used for generating invoices for clients. Simple interface where us
 
 Clean and professional, Material 3. Primary colour: `#2563EB` (blue).
 
-- Bottom navigation: Invoices | Vehicles | Products | Settings
+- Bottom navigation: Invoices | Vehicles | Products | Voorraad | Settings
 - 4-step Stepper for invoice creation — user can tap back to any previous step.
 - Invoice history shows running totals (total, paid, unpaid) and overdue highlighting.
 - Facturen tab filter chips: Facturen | Concept | Betaald | Offertes — the
@@ -66,6 +74,7 @@ Clean and professional, Material 3. Primary colour: `#2563EB` (blue).
 - **Flutter** 3.41.9 / Dart 3.11.5 — cross-platform (Android + Web)
 - **Firebase** — Auth (Google Sign-In), Cloud Firestore, Firebase Storage
 - **pdf** + **printing** packages — PDF generation and in-app preview
+- **syncfusion_flutter_pdf** + **file_selector** — reading a supplier invoice PDF's text
 - **provider** — state management (`ChangeNotifierProxyProvider` pattern)
 - **flutter_dotenv** — Firebase credentials loaded from `.env` asset
 - **share_plus** — sharing PDF with subject/text via `Share.shareXFiles`
@@ -88,6 +97,7 @@ lib/
     product.dart               Saved product/service
     invoice.dart               Invoice + InvoiceItem (snapshots, no FK refs)
     vehicle.dart               Vehicle in the shop (phone, name, plate) + invoice id
+    inventory.dart             StockHold + stockClaims/stockDelta (inventory maths)
   services/
     auth_service.dart          Google Sign-In (web popup / mobile native)
     firestore_service.dart     CRUD for all Firestore collections
@@ -96,6 +106,7 @@ lib/
     price_list_service.dart    Prijslijst as CSV (AI-friendly export)
     email_service.dart         shareInvoice() via Share.shareXFiles + cloud function
     excel_service.dart         Inkomsten overzicht: xlsx built as raw OOXML
+    purchase_import_service.dart  Supplier invoice PDF → lines → product matches
     download_service.dart      Saves an export to Downloads (per-platform)
     download_service_io.dart   Android MediaStore channel / desktop folder
     download_service_web.dart  Browser download via a blob URL
@@ -106,6 +117,7 @@ lib/
     product_provider.dart      Streams product list; setUserId() pattern
     invoice_provider.dart      Streams history + manages draft state
     vehicle_provider.dart      Streams vehicles in the shop; setUserId() pattern
+    inventory_provider.dart    Streams open stock holds (Gereserveerd); restock/write-off
   screens/
     auth/login_screen.dart
     home/home_screen.dart
@@ -115,6 +127,8 @@ lib/
     invoices/invoice_preview_screen.dart
     invoices/invoice_history_screen.dart
     vehicles/vehicles_screen.dart
+    inventory/inventory_screen.dart
+    inventory/purchase_import_screen.dart   Review a supplier invoice before booking it
     email/email_editor_screen.dart
   utils/
     price.dart                 Price rounding, money display, decimal input parsing
@@ -144,6 +158,7 @@ users/{uid}/
                            Legacy docs carry `ownerName`; read as `name`
   invoices/{id}            Invoice documents (full snapshots, not references)
                            `isQuote: true` marks an offerte
+  stockHolds/{invoiceId}   What one invoice took from the inventory
 ```
 
 Invoice number is auto-incremented via a Firestore transaction on `nextInvoiceNumber` in the business settings document; quotes use `nextQuoteNumber` in the same document.
@@ -320,6 +335,83 @@ uncategorised product); the price headers name the currency as an ISO code
 comma-separated, CRLF line ends, fields quoted when they hold a comma, quote
 or line break. Rows follow the tab's own order. Covered by
 `test/price_list_test.dart`.
+
+## Voorraad (Inventory)
+
+A product joins the inventory with `trackStock: true` (the Voorraad tab's
+"Producten toevoegen", or the switch in the product form); `stock` is what is
+**on the shelf**, already net of what open invoices took. The "Producten
+toevoegen" picker uses the same category / sub-category accordion as Producten
+(`CategoryHeader` / `SubCategoryHeader` in `widgets/category_selector.dart`),
+and each header has a tick box that selects everything under it, showing a
+dash when only some of it is selected.
+
+The stock follows the invoices through `stockHolds/{invoiceId}`, a record of
+how much of each product that invoice took. `FirestoreService.syncInvoiceStock`
+runs after every invoice write in `InvoiceProvider` (save, edit, status,
+convert, workshop release, delete) and, in one transaction, reads the invoice
+as stored, its hold and the products involved, then moves each product's stock
+by the difference between the hold and what the invoice claims now
+(`stockClaims` / `stockDelta`). So an edit only moves what changed, however the
+invoice got there. It is not awaited — a transaction needs the server and the
+invoice save should not wait on it.
+
+- **Quotes take nothing**, nor do hand-typed items (no `productId`) or
+  untracked products.
+- **Gereserveerd** lists the holds with `settled: false` — invoices not yet
+  paid, the workshop buffer included. Paying sets `settled`; moving back out
+  of a paid state clears it again.
+- **A deleted invoice keeps an unpaid hold**: the screen sees its invoice is
+  gone and offers "Terug in voorraad" (per line or all) or "Afschrijven".
+  `releaseHold` refuses while the invoice still exists, since its parts are
+  then still on it. A paid invoice's hold is dropped on delete — those parts
+  were sold.
+- **A paid invoice without a hold** (paid before the inventory, or before the
+  product was tracked) is never claimed, so editing an old invoice does not
+  take its parts a second time. An open invoice from before is claimed on its
+  next save.
+- Product form saves write back the latest stock unless it was retyped, and
+  the +/- buttons use `FieldValue.increment`, so neither clobbers a count an
+  invoice changed meanwhile.
+
+Covered by `test/inventory_test.dart`.
+
+### Inkoopfactuur inlezen (purchase import)
+
+The receipt button beside "Producten toevoegen" asks for a PDF
+(`file_selector`) and books a supplier's delivery onto the stock. It is all
+rules, no LLM (`lib/services/purchase_import_service.dart`):
+
+- **Text.** `pdfRows` extracts the words with `syncfusion_flutter_pdf` and
+  lays them out in rows by their position: words sharing a baseline are one
+  row whatever text object drew them, and a wide gap becomes a tab (column
+  break). A scanned invoice has no text and yields nothing. Runs through
+  `compute`. Syncfusion is pinned at 33.2.13: later releases need `xml` 7,
+  which the `pdf` package in use here does not allow. It is under
+  Syncfusion's community licence (free for small businesses).
+- **Lines.** `parsePurchaseRows` keeps rows with an amount and descriptive
+  words, dropping any with a bookkeeping word (totaal, btw, verzendkosten,
+  korting, factuurnummer, ...). The quantity is the one spelled out ("2x",
+  "3 stuks", "Aantal: 5"), else a whole number that times one amount gives
+  another (unit price × quantity = total), else a number leading the row,
+  else 1. A description on the row above its numbers, and an article number
+  on the row below, are picked up.
+- **Matching.** `matchScore` gives 1 when the shop's wording was confirmed
+  for that product before (`Product.supplierNames`), 0.95 when an article
+  code on the line appears in the product's name or description (dashes and
+  spaces ignored), and otherwise compares words — mostly how much of the
+  product name the line covers. Words with digits (sizes, grades) only count
+  when equal. A line is proposed at `matchThreshold` (0.5) or above.
+- **Review.** `PurchaseImportScreen` lists every line with its match, badge
+  (Onthouden / Zeker / Controleren / Niet herkend) and quantity; any line can
+  be re-pointed to another Voorraad product, best matches first, or left out.
+  "Bijboeken" writes one batch (`receiveDelivery`): a `FieldValue.increment`
+  per product and the confirmed wording appended to `supplierNames` with
+  `arrayUnion`. That is why `saveProduct` merges rather than overwrites:
+  `supplierNames` is not in `toMap`, so the product form leaves it alone.
+
+Covered by `test/purchase_import_test.dart`, including a round-trip through a
+PDF built with the `pdf` package.
 
 ## Money and Number Input
 

@@ -15,6 +15,20 @@ class Product {
   final String subCategory;
   final int sortOrder;
 
+  /// Kept in the Voorraad tab: putting it on an invoice takes it off the
+  /// shelf. Off for things that are not stock, such as labour.
+  final bool trackStock;
+
+  /// How many are on the shelf — already net of what open invoices took.
+  /// Only meaningful when [trackStock] is on.
+  final double stock;
+
+  /// How supplier invoices have described this product, normalized
+  /// (`normalizeSupplierText`). Remembered when a match is confirmed in the
+  /// purchase import so the next invoice from that shop matches outright.
+  /// Written only by appending (`arrayUnion`), never by [toMap].
+  final List<String> supplierNames;
+
   const Product({
     required this.id,
     required this.name,
@@ -24,6 +38,9 @@ class Product {
     this.category = '',
     this.subCategory = '',
     this.sortOrder = unordered,
+    this.trackStock = false,
+    this.stock = 0,
+    this.supplierNames = const [],
   });
 
   Map<String, dynamic> toMap() => {
@@ -34,6 +51,8 @@ class Product {
         'category': category,
         'subCategory': subCategory,
         'sortOrder': sortOrder,
+        'trackStock': trackStock,
+        'stock': stock,
       };
 
   factory Product.fromMap(String id, Map<String, dynamic> map) => Product(
@@ -47,6 +66,9 @@ class Product {
         subCategory:
             (map['category'] ?? '').isEmpty ? '' : (map['subCategory'] ?? ''),
         sortOrder: (map['sortOrder'] as num?)?.toInt() ?? unordered,
+        trackStock: map['trackStock'] == true,
+        stock: (map['stock'] as num?)?.toDouble() ?? 0,
+        supplierNames: List<String>.from(map['supplierNames'] ?? const []),
       );
 
   Product copyWith({
@@ -57,6 +79,8 @@ class Product {
     String? category,
     String? subCategory,
     int? sortOrder,
+    bool? trackStock,
+    double? stock,
   }) =>
       Product(
         id: id,
@@ -67,6 +91,9 @@ class Product {
         category: category ?? this.category,
         subCategory: subCategory ?? this.subCategory,
         sortOrder: sortOrder ?? this.sortOrder,
+        trackStock: trackStock ?? this.trackStock,
+        stock: stock ?? this.stock,
+        supplierNames: supplierNames,
       );
 }
 
@@ -123,3 +150,7 @@ int compareProducts(Product a, Product b) {
   if (byOrder != 0) return byOrder;
   return a.name.toLowerCase().compareTo(b.name.toLowerCase());
 }
+
+/// A stock count without a pointless `.0`: `3`, `2.5`.
+String formatStock(double qty) =>
+    qty == qty.truncateToDouble() ? qty.toInt().toString() : qty.toString();

@@ -6,6 +6,7 @@ import 'config/theme.dart';
 import 'firebase_options.dart';
 import 'providers/auth_provider.dart';
 import 'providers/business_provider.dart';
+import 'providers/inventory_provider.dart';
 import 'providers/invoice_provider.dart';
 import 'providers/product_provider.dart';
 import 'providers/vehicle_provider.dart';
@@ -47,6 +48,13 @@ class InvoiceApp extends StatelessWidget {
           update: (_, auth, invoices) {
             invoices!.setUserId(auth.user?.uid);
             return invoices;
+          },
+        ),
+        ChangeNotifierProxyProvider<AuthProvider, InventoryProvider>(
+          create: (_) => InventoryProvider(),
+          update: (_, auth, inventory) {
+            inventory!.setUserId(auth.user?.uid);
+            return inventory;
           },
         ),
         ChangeNotifierProxyProvider<AuthProvider, VehicleProvider>(

@@ -741,7 +741,7 @@ class _ProductsScreenState extends State<ProductsScreen> {
                 slivers: [
                   for (final cat in _orderedCategories) ...[
                     SliverToBoxAdapter(
-                      child: _CategoryHeader(
+                      child: CategoryHeader(
                         label: _toTitleCase(cat),
                         count: _productsFor(allProducts, cat).length,
                         isExpanded: _expandedCategory == cat,
@@ -758,7 +758,7 @@ class _ProductsScreenState extends State<ProductsScreen> {
                   ],
                   if (uncategorized.isNotEmpty) ...[
                     SliverToBoxAdapter(
-                      child: _CategoryHeader(
+                      child: CategoryHeader(
                         label: 'Overig',
                         count: uncategorized.length,
                         isExpanded: _expandedCategory == '',
@@ -1146,99 +1146,6 @@ class _SubCategoryDialogState extends State<_SubCategoryDialog> {
   }
 }
 
-// ── Category accordion header ─────────────────────────────────────────────────
-
-class _CategoryHeader extends StatelessWidget {
-  final String label;
-  final int count;
-  final bool isExpanded;
-  final VoidCallback onTap;
-
-  /// Shows a rename button while the header is open. Null for the "Overig"
-  /// bucket, which is not a real category.
-  final VoidCallback? onRename;
-
-  const _CategoryHeader({
-    required this.label,
-    required this.count,
-    required this.isExpanded,
-    required this.onTap,
-    this.onRename,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Material(
-      color: AppTheme.surf(context),
-      child: InkWell(
-        onTap: onTap,
-        child: Container(
-          height: 52,
-          padding: const EdgeInsets.symmetric(horizontal: 16),
-          decoration: BoxDecoration(
-            border: Border(
-              bottom: BorderSide(
-                color: isExpanded
-                    ? AppTheme.primary.withAlpha(80)
-                    : AppTheme.borderOf(context),
-              ),
-            ),
-          ),
-          child: Row(
-            children: [
-              Text(
-                label,
-                style: TextStyle(
-                  fontWeight: FontWeight.w700,
-                  fontSize: 15,
-                  color: isExpanded
-                      ? AppTheme.primary
-                      : AppTheme.onSurface(context),
-                ),
-              ),
-              const SizedBox(width: 8),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                decoration: BoxDecoration(
-                  color: AppTheme.primary.withAlpha(isExpanded ? 30 : 18),
-                  borderRadius: BorderRadius.circular(10),
-                ),
-                child: Text(
-                  '$count',
-                  style: const TextStyle(
-                    fontSize: 11,
-                    color: AppTheme.primary,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-              ),
-              const Spacer(),
-              if (isExpanded && onRename != null)
-                IconButton(
-                  icon: const Icon(Icons.drive_file_rename_outline, size: 19),
-                  tooltip: 'Hernoemen',
-                  onPressed: onRename,
-                  color: AppTheme.primary,
-                  visualDensity: VisualDensity.compact,
-                ),
-              AnimatedRotation(
-                turns: isExpanded ? 0.5 : 0,
-                duration: const Duration(milliseconds: 200),
-                child: Icon(
-                  Icons.expand_more,
-                  color: isExpanded
-                      ? AppTheme.primary
-                      : AppTheme.onSurfaceVariant(context),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
 // ── Search group header ───────────────────────────────────────────────────────
 
 class _SearchGroupHeader extends StatelessWidget {
@@ -1292,6 +1199,8 @@ class _ProductFormState extends State<_ProductForm> {
   String? _selectedSubCategory;
   bool _updatingPrice = false;
   double? _preciseExclFromIncl;
+  late bool _trackStock;
+  late final TextEditingController _stock;
 
   final _nameFocus = FocusNode();
   final _descriptionFocus = FocusNode();
@@ -1307,6 +1216,10 @@ class _ProductFormState extends State<_ProductForm> {
       text: widget.product?.description ?? '',
     );
     _unit = TextEditingController(text: widget.product?.unit ?? 'stuk');
+    _trackStock = widget.product?.trackStock ?? false;
+    _stock = TextEditingController(
+      text: formatStock(widget.product?.stock ?? 0),
+    );
 
     final raw = widget.product?.category ?? widget.initialCategory ?? '';
     _selectedCategory = raw.isEmpty ? null : raw;
@@ -1372,6 +1285,7 @@ class _ProductFormState extends State<_ProductForm> {
     _priceExcl.dispose();
     _priceIncl.dispose();
     _unit.dispose();
+    _stock.dispose();
     _nameFocus.dispose();
     _descriptionFocus.dispose();
     _priceExclFocus.dispose();
@@ -1382,6 +1296,17 @@ class _ProductFormState extends State<_ProductForm> {
 
   Future<void> _save() async {
     if (!_formKey.currentState!.validate()) return;
+    final provider = context.read<ProductProvider>();
+    // The count may have moved since the form opened (an invoice took parts
+    // meanwhile). Unless it was retyped here, write back the latest one
+    // rather than the count the form was opened with.
+    final initialStock = formatStock(widget.product?.stock ?? 0);
+    final latest = provider.products
+        .where((p) => p.id == widget.product?.id)
+        .firstOrNull;
+    final stock = _stock.text.trim() != initialStock
+        ? parseDecimalInput(_stock.text) ?? 0.0
+        : latest?.stock ?? widget.product?.stock ?? 0.0;
     final product = Product(
       id: widget.product?.id ?? const Uuid().v4(),
       name: _name.text.trim(),
@@ -1393,8 +1318,10 @@ class _ProductFormState extends State<_ProductForm> {
       subCategory: _selectedCategory == null ? '' : (_selectedSubCategory ?? ''),
       // Keep the manual position when editing; new products go last.
       sortOrder: widget.product?.sortOrder ?? Product.unordered,
+      trackStock: _trackStock,
+      stock: stock,
     );
-    await context.read<ProductProvider>().saveProduct(product);
+    await provider.saveProduct(product);
     if (mounted) Navigator.pop(context);
   }
 
@@ -1536,6 +1463,34 @@ class _ProductFormState extends State<_ProductForm> {
               onFieldSubmitted: (_) => _save(),
               decoration: const InputDecoration(labelText: 'Eenheid'),
             ),
+            const SizedBox(height: 4),
+            SwitchListTile(
+              contentPadding: EdgeInsets.zero,
+              value: _trackStock,
+              onChanged: (v) => setState(() => _trackStock = v),
+              title: const Text('Voorraad bijhouden'),
+              subtitle: const Text(
+                'Gaat van de voorraad af als hij op een factuur komt',
+                style: TextStyle(fontSize: 12),
+              ),
+            ),
+            if (_trackStock)
+              TextFormField(
+                controller: _stock,
+                decoration: InputDecoration(
+                  labelText: 'Op voorraad',
+                  suffixText: _unit.text.trim(),
+                ),
+                keyboardType: const TextInputType.numberWithOptions(
+                  decimal: true,
+                  signed: true,
+                ),
+                validator: (v) => v != null &&
+                        v.trim().isNotEmpty &&
+                        parseDecimalInput(v) == null
+                    ? 'Ongeldig'
+                    : null,
+              ),
             const SizedBox(height: 20),
             ElevatedButton(
               onPressed: _save,

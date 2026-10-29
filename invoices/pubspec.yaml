@@ -45,6 +45,8 @@ dependencies:
   web: ^1.1.0
   fl_chart: ^0.70.0
   flutter_email_sender: ^6.0.3
+  syncfusion_flutter_pdf: 33.2.13
+  file_selector: 1.1.0
 
 dev_dependencies:
   flutter_test:
