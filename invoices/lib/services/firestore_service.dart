@@ -5,6 +5,7 @@ import '../models/inventory.dart';
 import '../models/product.dart';
 import '../models/vehicle.dart';
 import '../models/invoice.dart';
+import '../utils/invoice_numbering.dart';
 
 class FirestoreService {
   final FirebaseFirestore _db = FirebaseFirestore.instance;
@@ -87,6 +88,31 @@ class FirestoreService {
       }
     });
     return nextNumber;
+  }
+
+  /// Winds the invoice (or, with [quote], the quote) counter back after
+  /// invoices numbered [deleted] were deleted, so the latest number is handed
+  /// out again — see [rolledBackCounter]. Runs as a transaction, reading the
+  /// counter as stored, so deletes running side by side agree on the result.
+  Future<void> rollBackCounter(
+    String userId, {
+    required bool quote,
+    required List<int> remaining,
+    required List<int> deleted,
+  }) async {
+    final field = quote ? 'nextQuoteNumber' : 'nextInvoiceNumber';
+    final ref = _db.collection('users').doc(userId).collection('settings').doc('business');
+    await _db.runTransaction((tx) async {
+      final doc = await tx.get(ref);
+      if (!doc.exists) return;
+      final counter = (doc.data()?[field] ?? 1) as int;
+      final next = rolledBackCounter(
+        counter: counter,
+        remaining: remaining,
+        deleted: deleted,
+      );
+      if (next != counter) tx.update(ref, {field: next});
+    });
   }
 
   // ── Clients ────────────────────────────────────────────────────────────────
@@ -285,15 +311,19 @@ class FirestoreService {
   /// by exactly the difference since the last sync, however the invoice got
   /// here (saved, edited, paid, converted, released from the workshop).
   ///
-  /// A deleted invoice keeps its unpaid hold: its parts are then waiting in
-  /// the reserved list to be put back or written off. A paid one's parts were
-  /// sold, so its hold is simply dropped.
-  Future<void> syncInvoiceStock(String userId, String invoiceId) async {
+  /// A deleted invoice's unpaid hold goes straight back on the shelf and the
+  /// hold is dropped; what was put back is returned, so the caller can offer
+  /// to undo it ([takeStock]). A paid one's parts were sold, so its hold is
+  /// simply dropped. Returns an empty map whenever nothing was restocked.
+  Future<Map<String, double>> syncInvoiceStock(
+    String userId,
+    String invoiceId,
+  ) async {
     final user = _db.collection('users').doc(userId);
     final invoiceRef = user.collection('invoices').doc(invoiceId);
     final holdRef = user.collection('stockHolds').doc(invoiceId);
 
-    await _db.runTransaction((tx) async {
+    return _db.runTransaction<Map<String, double>>((tx) async {
       final invoiceSnap = await tx.get(invoiceRef);
       final holdSnap = await tx.get(holdRef);
       final hold = holdSnap.exists
@@ -301,15 +331,31 @@ class FirestoreService {
           : null;
 
       if (!invoiceSnap.exists) {
-        if (hold != null && hold.settled) tx.delete(holdRef);
-        return;
+        if (hold == null) return const {};
+        if (hold.settled) {
+          tx.delete(holdRef);
+          return const {};
+        }
+        final products = <DocumentSnapshot<Map<String, dynamic>>>[];
+        for (final id in hold.quantities.keys) {
+          products.add(await tx.get(user.collection('products').doc(id)));
+        }
+        final restocked = <String, double>{};
+        for (final p in products) {
+          if (!p.exists) continue;
+          final qty = hold.quantities[p.id]!;
+          tx.update(p.reference, {'stock': FieldValue.increment(qty)});
+          restocked[p.id] = qty;
+        }
+        tx.delete(holdRef);
+        return restocked;
       }
       final invoice = Invoice.fromMap(invoiceSnap.id, invoiceSnap.data()!);
 
       // A paid invoice that never held anything predates the inventory (or
       // the product's tracking): its parts left the shelf long ago, so an edit
       // to it now must not take them a second time.
-      if (hold == null && invoice.isPaid) return;
+      if (hold == null && invoice.isPaid) return const {};
 
       final ids = {
         ...invoiceProductIds(invoice),
@@ -337,10 +383,25 @@ class FirestoreService {
       } else {
         tx.set(holdRef, StockHold.forInvoice(invoice, desired).toMap());
       }
+      return const {};
     });
   }
 
-  /// Takes lines out of a deleted invoice's hold. With [restock] they go back
+  /// Takes [quantities] off the shelf again — the undo of a deleted invoice's
+  /// automatic restock, for parts that were in fact used. The invoice is gone,
+  /// so there is no hold to record it on: the stock simply drops.
+  Future<void> takeStock(String userId, Map<String, double> quantities) async {
+    if (quantities.isEmpty) return;
+    final products = _db.collection('users').doc(userId).collection('products');
+    final batch = _db.batch();
+    quantities.forEach((id, qty) {
+      batch.update(products.doc(id), {'stock': FieldValue.increment(-qty)});
+    });
+    await batch.commit();
+  }
+
+  /// Takes lines out of a deleted invoice's hold — one left over from before
+  /// deleting restocked automatically, or whose restock failed. With [restock] they go back
   /// on the shelf; without, they are written off (used, broken, lost).
   /// [productIds] null means every line. Refused while the invoice still
   /// exists — its parts are then still on it, and putting them back would

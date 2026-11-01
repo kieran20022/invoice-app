@@ -6,6 +6,7 @@ import '../../config/theme.dart';
 import '../../models/invoice.dart';
 import '../../providers/business_provider.dart';
 import '../../providers/invoice_provider.dart';
+import '../../widgets/restock_snack.dart';
 import 'create_invoice_screen.dart';
 import '../../services/email_service.dart';
 import '../../services/pdf_service.dart';
@@ -271,8 +272,17 @@ class _InvoicePreviewScreenState extends State<InvoicePreviewScreen> {
         ),
       );
       if (confirm == true && mounted) {
-        await context.read<InvoiceProvider>().deleteInvoice(_invoice.id);
+        final provider = context.read<InvoiceProvider>();
+        final messenger = ScaffoldMessenger.of(context);
+        final overlay = Overlay.of(context, rootOverlay: true);
+        final restocked = await provider.deleteInvoice(_invoice.id);
         if (mounted) Navigator.of(context).popUntil((r) => r.isFirst);
+        showRestockSnack(
+          overlay,
+          messenger,
+          restocked,
+          onUndo: () => provider.undoRestock(restocked),
+        );
       }
     } else {
       await context.read<InvoiceProvider>().updateStatus(_invoice.id, action);

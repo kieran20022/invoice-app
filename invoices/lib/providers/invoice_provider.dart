@@ -5,6 +5,7 @@ import 'package:uuid/uuid.dart';
 import '../models/invoice.dart';
 import '../models/business_info.dart';
 import '../services/firestore_service.dart';
+import '../utils/invoice_numbering.dart';
 
 class InvoiceProvider extends ChangeNotifier {
   /// Status of an invoice still being built up for a vehicle in the shop.
@@ -23,6 +24,11 @@ class InvoiceProvider extends ChangeNotifier {
 
   Invoice? _draft;
 
+  /// Invoices deleted this session, by id. Kept (not cleared once the stream
+  /// drops them) so a delete can tell which numbers are gone even while the
+  /// stream has not caught up, or when several are deleted at once.
+  final Map<String, Invoice> _deleted = {};
+
   /// Invoices the Facturen tab shows — everything outside the workshop buffer.
   List<Invoice> get invoices => _visible;
 
@@ -39,6 +45,7 @@ class InvoiceProvider extends ChangeNotifier {
     _sub?.cancel();
     _all = [];
     _visible = [];
+    _deleted.clear();
     _isLoaded = false;
 
     if (userId == null) {
@@ -282,10 +289,57 @@ class InvoiceProvider extends ChangeNotifier {
     notifyListeners();
   }
 
-  Future<void> deleteInvoice(String invoiceId) async {
-    if (_userId == null) return;
+  /// Deletes an invoice and puts the parts it held back on the shelf.
+  /// Returns what went back (product id → quantity), for the "terug in
+  /// voorraad" snackbar and its undo ([undoRestock]). Unlike other writes
+  /// the stock sync is awaited here, since the caller reports its result; a
+  /// failed sync leaves the hold in Gereserveerd to be handled by hand.
+  Future<Map<String, double>> deleteInvoice(String invoiceId) async {
+    if (_userId == null) return const {};
+    // Noted before the first await, so invoices deleted together (Future.wait
+    // over a selection) all see each other as gone when the counter is
+    // wound back.
+    final deleted = _all.where((i) => i.id == invoiceId).firstOrNull;
+    if (deleted != null) _deleted[invoiceId] = deleted;
     await _firestore.deleteInvoice(_userId!, invoiceId);
-    _syncStock(invoiceId);
+    if (deleted != null) {
+      try {
+        await _rollBackNumber(deleted);
+      } catch (e) {
+        debugPrint('Nummering niet teruggezet ($invoiceId): $e');
+      }
+    }
+    try {
+      return await _firestore.syncInvoiceStock(_userId!, invoiceId);
+    } catch (e) {
+      debugPrint('Voorraad niet teruggezet ($invoiceId): $e');
+      return const {};
+    }
+  }
+
+  /// Gives a deleted invoice's number back when it was the latest in its
+  /// sequence (invoices or quotes), so the next document takes it again
+  /// instead of leaving a gap. See [rolledBackCounter] for when it does.
+  Future<void> _rollBackNumber(Invoice deleted) async {
+    final number = sequenceOf(deleted.invoiceNumber);
+    if (number == null) return; // A workshop invoice never took a number.
+    List<int> numbersOf(Iterable<Invoice> list) => [
+          for (final i in list)
+            if (i.isQuote == deleted.isQuote) ?sequenceOf(i.invoiceNumber),
+        ];
+    await _firestore.rollBackCounter(
+      _userId!,
+      quote: deleted.isQuote,
+      remaining: numbersOf(_all.where((i) => !_deleted.containsKey(i.id))),
+      deleted: numbersOf(_deleted.values),
+    );
+  }
+
+  /// Takes a deleted invoice's restocked parts off the shelf again — they
+  /// were used after all.
+  Future<void> undoRestock(Map<String, double> restocked) async {
+    if (_userId == null) return;
+    await _firestore.takeStock(_userId!, restocked);
   }
 
   /// Moves the inventory along with invoice [invoiceId]'s latest write.
@@ -294,8 +348,10 @@ class InvoiceProvider extends ChangeNotifier {
   /// not wait on its stock count to close an invoice.
   void _syncStock(String invoiceId) {
     if (_userId == null || invoiceId.isEmpty) return;
-    _firestore.syncInvoiceStock(_userId!, invoiceId).catchError(
-          (Object e) => debugPrint('Voorraad niet bijgewerkt ($invoiceId): $e'),
+    _firestore.syncInvoiceStock(_userId!, invoiceId).then(
+          (_) {},
+          onError: (Object e) =>
+              debugPrint('Voorraad niet bijgewerkt ($invoiceId): $e'),
         );
   }
 

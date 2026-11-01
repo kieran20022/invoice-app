@@ -6,6 +6,7 @@ import '../../config/theme.dart';
 import '../../models/invoice.dart';
 import '../../providers/business_provider.dart';
 import '../../providers/invoice_provider.dart';
+import '../../widgets/restock_snack.dart';
 import '../../services/download_service.dart';
 import '../../services/email_service.dart';
 import '../../services/pdf_service.dart';
@@ -237,11 +238,20 @@ class _InvoiceHistoryScreenState extends State<InvoiceHistoryScreen> {
     final provider = context.read<InvoiceProvider>();
     setState(() => _busy = true);
     try {
-      await Future.wait(invoices.map((i) => provider.deleteInvoice(i.id)));
+      final messenger = ScaffoldMessenger.of(context);
+      final overlay = Overlay.of(context, rootOverlay: true);
+      final restocks =
+          await Future.wait(invoices.map((i) => provider.deleteInvoice(i.id)));
+      final restocked = mergeRestocked(restocks);
       if (!mounted) return;
       _exitSelection();
-      _snack(
-        count == 1 ? '1 document verwijderd' : '$count documenten verwijderd',
+      showRestockSnack(
+        overlay,
+        messenger,
+        restocked,
+        onUndo: () => provider.undoRestock(restocked),
+        prefix:
+            count == 1 ? '1 document verwijderd' : '$count documenten verwijderd',
       );
     } catch (e) {
       if (mounted) _snack('Verwijderen mislukt: $e', error: true);
@@ -290,7 +300,16 @@ class _InvoiceHistoryScreenState extends State<InvoiceHistoryScreen> {
       ),
     );
     if (confirmed == true && mounted) {
-      await context.read<InvoiceProvider>().deleteInvoice(invoice.id);
+      final provider = context.read<InvoiceProvider>();
+      final messenger = ScaffoldMessenger.of(context);
+      final overlay = Overlay.of(context, rootOverlay: true);
+      final restocked = await provider.deleteInvoice(invoice.id);
+      showRestockSnack(
+        overlay,
+        messenger,
+        restocked,
+        onUndo: () => provider.undoRestock(restocked),
+      );
     }
   }
 

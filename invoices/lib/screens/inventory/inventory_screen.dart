@@ -15,8 +15,9 @@ import '../../widgets/category_selector.dart';
 import 'purchase_import_screen.dart';
 
 /// The inventory: the products picked from Producten to be counted, and the
-/// parts open invoices have taken off the shelf ("Gereserveerd"). A part on a
-/// deleted invoice waits in Gereserveerd to be put back or written off.
+/// parts open invoices have taken off the shelf ("Gereserveerd"). Deleting an
+/// invoice puts its parts back by itself; a deleted invoice only shows up here
+/// when that restock failed (or predates it), to be put back or written off.
 class InventoryScreen extends StatefulWidget {
   const InventoryScreen({super.key});
 
@@ -667,7 +668,7 @@ class _ReservedList extends StatelessWidget {
         title: 'Niets gereserveerd',
         message: 'Onderdelen op een concept- of werkplaatsfactuur staan hier '
             'tot de factuur betaald is. Wordt de factuur verwijderd, dan '
-            'wachten ze hier om terug in de voorraad te gaan.',
+            'gaan ze vanzelf terug in de voorraad.',
       );
     }
     // Cancelled invoices first: those are the ones asking for something.

@@ -8,6 +8,7 @@ import '../../models/invoice.dart';
 import '../../models/vehicle.dart';
 import '../../providers/business_provider.dart';
 import '../../providers/invoice_provider.dart';
+import '../../widgets/restock_snack.dart';
 import '../../providers/vehicle_provider.dart';
 import '../../services/email_service.dart';
 import '../../services/pdf_service.dart';
@@ -316,12 +317,20 @@ class _VehiclesScreenState extends State<VehiclesScreen> {
 
     // Delete the vehicle last: if the invoice delete fails, the vehicle is
     // still there to reach it by.
+    final messenger = ScaffoldMessenger.of(context);
+    final overlay = Overlay.of(context, rootOverlay: true);
     final invoice = _invoiceFor(invoiceProvider.allInvoices, vehicle);
-    if (invoice != null) {
-      await invoiceProvider.deleteInvoice(invoice.id);
-    }
+    final restocked = invoice == null
+        ? const <String, double>{}
+        : await invoiceProvider.deleteInvoice(invoice.id);
     await vehicleProvider.deleteVehicle(vehicle.id);
-    _snack('${vehicle.plate} is verwijderd');
+    showRestockSnack(
+      overlay,
+      messenger,
+      restocked,
+      onUndo: () => invoiceProvider.undoRestock(restocked),
+      prefix: '${vehicle.plate} is verwijderd',
+    );
   }
 
   Future<bool?> _confirm({

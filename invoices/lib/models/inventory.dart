@@ -5,10 +5,9 @@ import 'invoice.dart';
 /// The stock count on a product is what is still on the shelf, so a part is
 /// subtracted the moment it lands on an invoice. The hold remembers how much
 /// each invoice took, which is what lets a later edit subtract or return only
-/// the difference, and what keeps a cancelled invoice's parts findable: while
+/// the difference, and what lets a deleted invoice give its parts back: while
 /// the invoice is unpaid ([settled] false) its parts sit in the "Gereserveerd"
-/// list, and if the invoice is deleted they stay there until they are put back
-/// on the shelf or written off.
+/// list, and when the invoice is deleted they go back on the shelf.
 class StockHold {
   final String invoiceId;
 

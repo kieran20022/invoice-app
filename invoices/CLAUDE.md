@@ -41,8 +41,9 @@ Invoice app. Used for generating invoices for clients. Simple interface where us
 15. Voorraad: An inventory of the products the user picks from Producten
     (labour and other services stay out). A tracked product goes off the
     shelf as soon as it lands on an invoice; while that invoice is unpaid its
-    parts sit under "Gereserveerd", and when the invoice is deleted they wait
-    there to be put back ("Alles terugzetten", or per line) or written off.
+    parts sit under "Gereserveerd", and when the invoice is deleted they go
+    back on the shelf by themselves — a toast at the top ("4 producten terug in
+    voorraad") offers "Producten Verwijderen" for parts that were used after all.
     A supplier's invoice (a webshop order as PDF) can be read in with the
     receipt button: its lines are matched to the Voorraad's products, without
     an LLM, and reviewed before the quantities are booked onto the stock.
@@ -165,6 +166,19 @@ users/{uid}/
 ```
 
 Invoice number is auto-incremented via a Firestore transaction on `nextInvoiceNumber` in the business settings document; quotes use `nextQuoteNumber` in the same document.
+
+Deleting the latest document gives its number back: delete 55 and the next
+invoice is 55 again (`InvoiceProvider._rollBackNumber` →
+`FirestoreService.rollBackCounter`, rule in `rolledBackCounter`,
+`lib/utils/invoice_numbering.dart`). The test is whether the number just
+below the counter — the last one handed out — was deleted; if so the counter
+goes back to just above the highest number left, so 56 then 55 (or both at
+once, or 56 after an older gap) all end at 55. A number from the middle of the
+list is not reused (that would need renumbering what follows), and a counter
+set ahead of the list in Settings is left alone, since the number below it was
+never deleted. Invoices deleted this session are remembered in `_deleted`, so
+a selection deleted at once agrees on the result.
+Covered by `test/invoice_numbering_test.dart`.
 
 ## PDF Templates
 
@@ -367,11 +381,18 @@ invoice save should not wait on it.
 - **Gereserveerd** lists the holds with `settled: false` — invoices not yet
   paid, the workshop buffer included. Paying sets `settled`; moving back out
   of a paid state clears it again.
-- **A deleted invoice keeps an unpaid hold**: the screen sees its invoice is
-  gone and offers "Terug in voorraad" (per line or all) or "Afschrijven".
-  `releaseHold` refuses while the invoice still exists, since its parts are
-  then still on it. A paid invoice's hold is dropped on delete — those parts
-  were sold.
+- **A deleted invoice restocks itself**: `syncInvoiceStock` puts an unpaid
+  hold's parts back and drops the hold, returning what went back.
+  `InvoiceProvider.deleteInvoice` awaits that (unlike other writes) and hands
+  it to `showRestockSnack` (`lib/widgets/restock_snack.dart`): "x producten
+  terug in voorraad" with "Producten Verwijderen", which takes them off again
+  (`takeStock`, a plain decrement — the invoice is gone, so no hold). The
+  toast sits at the top of the screen (an overlay entry, out of the way of
+  the bottom navigation), goes after 6 s and can be swiped away; missed, the stock is
+  corrected by hand. A paid invoice's hold is dropped on delete — those parts
+  were sold. A deleted invoice still in Gereserveerd (restock failed, or from
+  before) offers "Terug in voorraad" or "Afschrijven"; `releaseHold` refuses
+  while the invoice still exists.
 - **A paid invoice without a hold** (paid before the inventory, or before the
   product was tracked) is never claimed, so editing an old invoice does not
   take its parts a second time. An open invoice from before is claimed on its
