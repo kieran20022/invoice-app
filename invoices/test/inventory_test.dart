@@ -47,6 +47,41 @@ void main() {
       expect(claims, {'tyre': 3});
     });
 
+    test('a line made of parts takes the parts it records', () {
+      final service = InvoiceItem(
+        id: 'service',
+        omschrijving: 'Onderhoud',
+        aantal: 1,
+        prijsExBtw: 80,
+        productId: 'labour',
+        parts: const [
+          ItemPart(productId: 'oil', naam: 'Olie', aantal: 4.5),
+          ItemPart(productId: 'plug', naam: 'Bougie', aantal: 4),
+        ],
+      );
+      final invoice = _invoice([service, _item('oil', 1, name: 'Olie')]);
+      expect(stockClaims(invoice, _tracked), {'oil': 5.5, 'plug': 4});
+      expect(
+        StockHold.forInvoice(invoice, stockClaims(invoice, _tracked)).names,
+        {'oil': 'Olie', 'plug': 'Bougie'},
+      );
+      expect(invoiceProductIds(invoice), {'labour', 'oil', 'plug'});
+    });
+
+    test('parts survive a round trip through Firestore', () {
+      const item = InvoiceItem(
+        id: 'service',
+        omschrijving: 'Onderhoud',
+        aantal: 1,
+        prijsExBtw: 80,
+        parts: [ItemPart(productId: 'oil', naam: 'Olie', aantal: 4)],
+      );
+      final back = InvoiceItem.fromMap(item.toMap());
+      expect(back.parts.single.productId, 'oil');
+      expect(back.parts.single.aantal, 4);
+      expect(InvoiceItem.fromMap({'omschrijving': 'Oud'}).parts, isEmpty);
+    });
+
     test('a quote takes nothing off the shelf', () {
       expect(
         stockClaims(_invoice([_item('tyre', 2)], isQuote: true), _tracked),

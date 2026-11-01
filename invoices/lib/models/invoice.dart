@@ -1,3 +1,34 @@
+/// A Voorraad product used on an invoice line made of parts ("Onderhoud" with
+/// 4 liter olie). Only the stock reads these; the document bills the line.
+class ItemPart {
+  final String productId;
+
+  /// The product's name when it was picked, so the part can still be named
+  /// once the product is gone.
+  final String naam;
+
+  /// How much the whole line used — not per unit of the line.
+  final double aantal;
+
+  const ItemPart({
+    required this.productId,
+    required this.naam,
+    required this.aantal,
+  });
+
+  Map<String, dynamic> toMap() => {
+        'productId': productId,
+        'naam': naam,
+        'aantal': aantal,
+      };
+
+  factory ItemPart.fromMap(Map<String, dynamic> map) => ItemPart(
+        productId: map['productId'] ?? '',
+        naam: map['naam'] ?? '',
+        aantal: (map['aantal'] as num?)?.toDouble() ?? 0,
+      );
+}
+
 class InvoiceItem {
   final String id;
   final String omschrijving;
@@ -9,6 +40,10 @@ class InvoiceItem {
   final double prijsExBtw;
   final String? productId;
 
+  /// The parts this line took from the Voorraad, for a product made of
+  /// components ([Product.components]). Empty for an ordinary line.
+  final List<ItemPart> parts;
+
   const InvoiceItem({
     required this.id,
     required this.omschrijving,
@@ -16,6 +51,7 @@ class InvoiceItem {
     this.aantalTot,
     required this.prijsExBtw,
     this.productId,
+    this.parts = const [],
   });
 
   /// A range only counts as one when its upper bound is actually higher.
@@ -41,6 +77,7 @@ class InvoiceItem {
         'aantalTot': aantalTot,
         'prijsExBtw': prijsExBtw,
         'productId': productId,
+        'parts': [for (final p in parts) p.toMap()],
       };
 
   factory InvoiceItem.fromMap(Map<String, dynamic> map) => InvoiceItem(
@@ -50,6 +87,10 @@ class InvoiceItem {
         aantalTot: (map['aantalTot'] as num?)?.toDouble(),
         prijsExBtw: (map['prijsExBtw'] ?? map['unitPrice'] ?? 0.0).toDouble(),
         productId: map['productId'],
+        parts: [
+          for (final p in (map['parts'] as List? ?? const []))
+            ItemPart.fromMap(Map<String, dynamic>.from(p as Map)),
+        ],
       );
 
   InvoiceItem copyWith({
@@ -58,6 +99,7 @@ class InvoiceItem {
     double? aantalTot,
     bool clearAantalTot = false,
     double? prijsExBtw,
+    List<ItemPart>? parts,
   }) =>
       InvoiceItem(
         id: id,
@@ -66,6 +108,7 @@ class InvoiceItem {
         aantalTot: clearAantalTot ? null : (aantalTot ?? this.aantalTot),
         prijsExBtw: prijsExBtw ?? this.prijsExBtw,
         productId: productId,
+        parts: parts ?? this.parts,
       );
 }
 

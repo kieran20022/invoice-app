@@ -77,9 +77,13 @@ class StockHold {
         invoiceId: invoice.id,
         quantities: quantities,
         names: {
-          for (final item in invoice.items)
+          for (final item in invoice.items) ...{
             if (item.productId != null && quantities.containsKey(item.productId))
               item.productId!: item.omschrijving,
+            for (final part in item.parts)
+              if (quantities.containsKey(part.productId))
+                part.productId: part.naam,
+          },
         },
         invoiceLabel: '${invoice.documentLabel} ${invoice.numberLabel}',
         clientNaam: invoice.clientNaam,
@@ -91,22 +95,38 @@ class StockHold {
 
 /// How much of each tracked product [invoice] takes from the inventory.
 /// A quote takes nothing — it only estimates — and an item typed in by hand
-/// has no product to take from. The same product on two lines adds up.
+/// has no product to take from. A line made of parts takes the parts it
+/// records, as well as its own product if that is tracked. The same product
+/// on two lines (or as a part of several) adds up.
 Map<String, double> stockClaims(
   Invoice invoice,
   bool Function(String productId) isTracked,
 ) {
   if (invoice.isQuote) return const {};
   final claims = <String, double>{};
+  void claim(String? id, double qty) {
+    if (id == null || id.isEmpty || !isTracked(id) || qty <= 0) return;
+    claims[id] = (claims[id] ?? 0) + qty;
+  }
+
   for (final item in invoice.items) {
-    final id = item.productId;
-    if (id == null || id.isEmpty || !isTracked(id) || item.aantal <= 0) {
-      continue;
+    claim(item.productId, item.aantal);
+    for (final part in item.parts) {
+      claim(part.productId, part.aantal);
     }
-    claims[id] = (claims[id] ?? 0) + item.aantal;
   }
   return claims;
 }
+
+/// Every product id [invoice] refers to, its lines' parts included.
+Set<String> invoiceProductIds(Invoice invoice) => {
+      for (final item in invoice.items) ...{
+        if (item.productId != null && item.productId!.isNotEmpty)
+          item.productId!,
+        for (final part in item.parts)
+          if (part.productId.isNotEmpty) part.productId,
+      },
+    };
 
 /// Per product, how much more [desired] takes than [held] did — what has to
 /// come off the shelf. Negative is stock going back; unchanged lines are left

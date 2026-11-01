@@ -29,6 +29,12 @@ class Product {
   /// Written only by appending (`arrayUnion`), never by [toMap].
   final List<String> supplierNames;
 
+  /// Voorraad products this one can be made of ("Onderhoud" → olie, bougies,
+  /// V-snaar). Not every job uses all of them, so these are the choices
+  /// offered when it goes on an invoice — the parts actually used are
+  /// recorded per invoice line ([InvoiceItem.parts]).
+  final List<String> components;
+
   const Product({
     required this.id,
     required this.name,
@@ -41,6 +47,7 @@ class Product {
     this.trackStock = false,
     this.stock = 0,
     this.supplierNames = const [],
+    this.components = const [],
   });
 
   Map<String, dynamic> toMap() => {
@@ -53,6 +60,7 @@ class Product {
         'sortOrder': sortOrder,
         'trackStock': trackStock,
         'stock': stock,
+        'components': components,
       };
 
   factory Product.fromMap(String id, Map<String, dynamic> map) => Product(
@@ -69,6 +77,7 @@ class Product {
         trackStock: map['trackStock'] == true,
         stock: (map['stock'] as num?)?.toDouble() ?? 0,
         supplierNames: List<String>.from(map['supplierNames'] ?? const []),
+        components: List<String>.from(map['components'] ?? const []),
       );
 
   Product copyWith({
@@ -81,6 +90,7 @@ class Product {
     int? sortOrder,
     bool? trackStock,
     double? stock,
+    List<String>? components,
   }) =>
       Product(
         id: id,
@@ -94,6 +104,7 @@ class Product {
         trackStock: trackStock ?? this.trackStock,
         stock: stock ?? this.stock,
         supplierNames: supplierNames,
+        components: components ?? this.components,
       );
 }
 

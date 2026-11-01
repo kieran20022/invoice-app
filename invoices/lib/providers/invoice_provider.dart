@@ -168,6 +168,7 @@ class InvoiceProvider extends ChangeNotifier {
     double? aantalTot,
     double prijsExBtw = 0,
     String? productId,
+    List<ItemPart> parts = const [],
   }) =>
       InvoiceItem(
         id: _uuid.v4(),
@@ -176,6 +177,7 @@ class InvoiceProvider extends ChangeNotifier {
         aantalTot: aantalTot,
         prijsExBtw: prijsExBtw,
         productId: productId,
+        parts: parts,
       );
 
   /// Saves the draft. [status] applies only to a newly created invoice — an

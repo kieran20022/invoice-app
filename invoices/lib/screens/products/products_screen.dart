@@ -12,6 +12,7 @@ import '../../services/email_service.dart';
 import '../../services/price_list_service.dart';
 import '../../utils/price.dart';
 import '../../widgets/category_selector.dart';
+import '../../widgets/parts_sheet.dart';
 import '../../widgets/reorder_screen.dart';
 
 String _toTitleCase(String s) => toTitleCase(s);
@@ -1201,6 +1202,7 @@ class _ProductFormState extends State<_ProductForm> {
   double? _preciseExclFromIncl;
   late bool _trackStock;
   late final TextEditingController _stock;
+  late List<String> _components;
 
   final _nameFocus = FocusNode();
   final _descriptionFocus = FocusNode();
@@ -1217,6 +1219,7 @@ class _ProductFormState extends State<_ProductForm> {
     );
     _unit = TextEditingController(text: widget.product?.unit ?? 'stuk');
     _trackStock = widget.product?.trackStock ?? false;
+    _components = [...?widget.product?.components];
     _stock = TextEditingController(
       text: formatStock(widget.product?.stock ?? 0),
     );
@@ -1320,15 +1323,34 @@ class _ProductFormState extends State<_ProductForm> {
       sortOrder: widget.product?.sortOrder ?? Product.unordered,
       trackStock: _trackStock,
       stock: stock,
+      components: _components,
     );
     await provider.saveProduct(product);
     if (mounted) Navigator.pop(context);
+  }
+
+  Future<void> _pickComponents(List<Product> candidates) async {
+    final picked = await showComponentPicker(
+      context,
+      candidates: candidates,
+      selected: _components,
+    );
+    if (picked != null && mounted) setState(() => _components = picked);
   }
 
   @override
   Widget build(BuildContext context) {
     final productProvider = context.watch<ProductProvider>();
     final categories = productProvider.categories;
+    // A product can be made of Voorraad products, never of itself.
+    final candidates = productProvider.products
+        .where((p) => p.trackStock && p.id != widget.product?.id)
+        .toList()
+      ..sort(compareProducts);
+    final componentNames = [
+      for (final id in _components)
+        ...candidates.where((p) => p.id == id).map((p) => p.name),
+    ];
     final subCategories = _selectedCategory == null
         ? const <String>[]
         : productProvider.subCategoriesFor(_selectedCategory!);
@@ -1491,6 +1513,20 @@ class _ProductFormState extends State<_ProductForm> {
                     ? 'Ongeldig'
                     : null,
               ),
+            ListTile(
+              contentPadding: EdgeInsets.zero,
+              leading: const Icon(Icons.account_tree_outlined),
+              title: const Text('Bestaat uit'),
+              subtitle: Text(
+                componentNames.isEmpty
+                    ? 'Kies voorraadproducten waaruit dit kan bestaan, '
+                        'zoals olie en bougies voor onderhoud'
+                    : componentNames.join(', '),
+                style: const TextStyle(fontSize: 12),
+              ),
+              trailing: const Icon(Icons.chevron_right),
+              onTap: () => _pickComponents(candidates),
+            ),
             const SizedBox(height: 20),
             ElevatedButton(
               onPressed: _save,

@@ -312,9 +312,7 @@ class FirestoreService {
       if (hold == null && invoice.isPaid) return;
 
       final ids = {
-        for (final item in invoice.items)
-          if (item.productId != null && item.productId!.isNotEmpty)
-            item.productId!,
+        ...invoiceProductIds(invoice),
         ...?hold?.quantities.keys,
       };
       final products = <String, DocumentSnapshot<Map<String, dynamic>>>{};

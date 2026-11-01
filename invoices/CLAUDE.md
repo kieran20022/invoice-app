@@ -46,6 +46,9 @@ Invoice app. Used for generating invoices for clients. Simple interface where us
     A supplier's invoice (a webshop order as PDF) can be read in with the
     receipt button: its lines are matched to the Voorraad's products, without
     an LLM, and reviewed before the quantities are booked onto the stock.
+    A product can be made of Voorraad products ("Bestaat uit", e.g. Onderhoud
+    → olie, bougies, V-snaar); putting it on an invoice asks which of those
+    parts the job used, and only those come off the stock.
 
 # App Workflow
 
@@ -378,6 +381,23 @@ invoice save should not wait on it.
   invoice changed meanwhile.
 
 Covered by `test/inventory_test.dart`.
+
+### Products made of parts
+
+`Product.components` lists the Voorraad products a product can be made of,
+picked under "Bestaat uit" in the product form (`showComponentPicker`,
+`lib/widgets/parts_sheet.dart`). A job rarely uses all of them, so the choice
+is made per invoice line: adding such a product from the picker opens
+`showPartsSheet`, and the line stores what was used as `InvoiceItem.parts`
+(`ItemPart`: product id, name, quantity for the *whole line*, not per unit).
+The item row shows the parts and reopens the sheet when tapped.
+
+`stockClaims` adds the parts to what the invoice takes (alongside the line's
+own product if that is tracked), and `invoiceProductIds` hands them to
+`syncInvoiceStock`, so holds, Gereserveerd, restock and write-off treat them
+like any other line. Only components that still exist and are tracked are
+offered; a part recorded earlier stays on the line even if its product has
+left the list.
 
 ### Inkoopfactuur inlezen (purchase import)
 

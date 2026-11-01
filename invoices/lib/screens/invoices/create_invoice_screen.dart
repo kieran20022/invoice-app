@@ -10,6 +10,7 @@ import '../../providers/invoice_provider.dart';
 import '../../providers/product_provider.dart';
 import '../../utils/price.dart';
 import '../../widgets/category_selector.dart';
+import '../../widgets/parts_sheet.dart';
 import '../../widgets/reorder_screen.dart';
 import 'invoice_preview_screen.dart';
 
@@ -790,6 +791,7 @@ class _ItemsStep extends StatelessWidget {
     final items = provider.draft?.items ?? [];
     final currency = provider.draft?.currency ?? '€';
     final taxRate = provider.draft?.taxRate ?? 21.0;
+    final products = context.watch<ProductProvider>().products;
 
     return Column(
       children: [
@@ -815,7 +817,9 @@ class _ItemsStep extends StatelessWidget {
               item: item,
               currency: currency,
               taxRate: taxRate,
+              components: _componentsFor(item, products),
               onEdit: () => onEditItem(item),
+              onEditParts: () => _editParts(context, item, products),
               onDelete: () =>
                   context.read<InvoiceProvider>().removeDraftItem(item.id),
               onQtyChanged: (qty) => context
@@ -863,11 +867,37 @@ class _ItemsStep extends StatelessWidget {
   }
 }
 
+/// The parts [item]'s product can be made of; empty for an ordinary line.
+List<Product> _componentsFor(InvoiceItem item, List<Product> products) {
+  final product = products.where((p) => p.id == item.productId).firstOrNull;
+  return product == null ? const [] : componentsOf(product, products);
+}
+
+Future<void> _editParts(
+  BuildContext context,
+  InvoiceItem item,
+  List<Product> products,
+) async {
+  final provider = context.read<InvoiceProvider>();
+  final picked = await showPartsSheet(
+    context,
+    title: item.omschrijving,
+    components: _componentsFor(item, products),
+    current: item.parts,
+  );
+  if (picked != null) provider.updateDraftItem(item.copyWith(parts: picked));
+}
+
 class _ItemRow extends StatelessWidget {
   final InvoiceItem item;
   final String currency;
   final double taxRate;
+
+  /// What the line's product can be made of — the parts can be picked when
+  /// this is not empty (or when the line already records some).
+  final List<Product> components;
   final VoidCallback onEdit;
+  final VoidCallback onEditParts;
   final VoidCallback onDelete;
   final ValueChanged<double> onQtyChanged;
 
@@ -875,7 +905,9 @@ class _ItemRow extends StatelessWidget {
     required this.item,
     required this.currency,
     required this.taxRate,
+    required this.components,
     required this.onEdit,
+    required this.onEditParts,
     required this.onDelete,
     required this.onQtyChanged,
   });
@@ -913,6 +945,37 @@ class _ItemRow extends StatelessWidget {
                     fontSize: 11,
                   ),
                 ),
+                if (components.isNotEmpty || item.parts.isNotEmpty)
+                  InkWell(
+                    onTap: onEditParts,
+                    child: Padding(
+                      padding: const EdgeInsets.only(top: 4),
+                      child: Row(
+                        children: [
+                          const Icon(
+                            Icons.account_tree_outlined,
+                            size: 14,
+                            color: AppTheme.primary,
+                          ),
+                          const SizedBox(width: 4),
+                          Expanded(
+                            child: Text(
+                              item.parts.isEmpty
+                                  ? 'Onderdelen kiezen'
+                                  : item.parts
+                                      .map((p) =>
+                                          '${formatStock(p.aantal)}× ${p.naam}')
+                                      .join(', '),
+                              style: const TextStyle(
+                                color: AppTheme.primary,
+                                fontSize: 12,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
               ],
             ),
           ),
@@ -1160,14 +1223,29 @@ class _ProductPickerScreenState extends State<ProductPickerScreen> {
     return results;
   }
 
-  void _addToInvoice(BuildContext ctx, Product p) {
+  Future<void> _addToInvoice(BuildContext ctx, Product p) async {
     final provider = ctx.read<InvoiceProvider>();
+    // A product made of parts asks which of them this job used, so the
+    // Voorraad loses exactly those.
+    var parts = const <ItemPart>[];
+    final components = componentsOf(p, widget.products);
+    if (components.isNotEmpty) {
+      final picked = await showPartsSheet(
+        ctx,
+        title: p.name,
+        components: components,
+        confirmLabel: 'Toevoegen',
+      );
+      if (picked == null || !ctx.mounted) return;
+      parts = picked;
+    }
     provider.addDraftItem(
       provider.createItem(
         omschrijving: p.name,
         aantal: 1,
         prijsExBtw: p.price,
         productId: p.id,
+        parts: parts,
       ),
     );
     Navigator.pop(ctx);
