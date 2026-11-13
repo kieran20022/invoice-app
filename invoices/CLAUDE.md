@@ -650,6 +650,12 @@ Text is formatted as `*Subject*\n\nMessage` so WhatsApp renders the subject bold
 - SHA-1 debug fingerprint must be registered in Firebase Console under the Android app.
 - Get debug SHA-1: `keytool -list -v -keystore %USERPROFILE%\.android\debug.keystore -alias androiddebugkey -storepass android`
 - Package name: `com.bliksemit.Invoices`
+- Version is `MAJOR.MINOR` in tenths (4.9 → 5.0): pubspec holds `4.3.0+43`
+  (build number MAJOR*10+MINOR), Android shows `4.3`. Bump with
+  `dart run tool/bump_version.dart`. `flutter build apk --release` also writes
+  `build/app/outputs/flutter-apk/Invoices_4.3.apk`, a copy of
+  `app-release.apk` (a copy, not a rename, because the Flutter tool expects
+  `app-release.apk` and fails the build without it).
 - Google Services Gradle plugin (4.4.2) is declared in `settings.gradle.kts` and applied in `app/build.gradle.kts`.
 
 ## Web

@@ -6,6 +6,10 @@ plugins {
     id("com.google.gms.google-services")
 }
 
+// MAJOR.MINOR from pubspec's version (4.3.0+43 → "4.3"), used as the app's
+// version name and in the release APK's name.
+val appVersion: String = flutter.versionName!!.split(".").take(2).joinToString(".")
+
 android {
     namespace = "com.bliksemit.Invoices"
     compileSdk = flutter.compileSdkVersion
@@ -28,7 +32,8 @@ android {
         minSdk = flutter.minSdkVersion
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode
-        versionName = flutter.versionName
+        // The version is MAJOR.MINOR (pubspec's 4.3.0 shows as 4.3).
+        versionName = appVersion
     }
 
     buildTypes {
@@ -42,6 +47,23 @@ android {
 
 flutter {
     source = "../.."
+}
+
+// Puts a copy of the release APK next to Flutter's app-release.apk as
+// Invoices_<version>.apk (build/app/outputs/flutter-apk/Invoices_4.3.apk).
+// A copy rather than a rename: `flutter build apk` looks for app-release.apk
+// and reports the build as failed when it is gone.
+val releaseApk = layout.buildDirectory.file("outputs/apk/release/app-release.apk")
+val namedApk = layout.buildDirectory.file("outputs/flutter-apk/Invoices_$appVersion.apk")
+tasks.matching { it.name == "assembleRelease" }.configureEach {
+    doLast {
+        val source = releaseApk.get().asFile
+        if (source.exists()) {
+            val target = namedApk.get().asFile
+            source.copyTo(target, overwrite = true)
+            println("Release APK: ${target.path}")
+        }
+    }
 }
 
 dependencies {

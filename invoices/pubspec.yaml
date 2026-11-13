@@ -1,7 +1,11 @@
 name: invoices
 description: "Professional invoice generation app with Firebase backend"
 publish_to: 'none'
-version: 1.0.0+1
+# The app's version is MAJOR.MINOR (4.3), counted in tenths: 4.9 is followed
+# by 5.0. The patch part stays 0 and the build number is MAJOR*10+MINOR, so it
+# always grows. Bump it with `dart run tool/bump_version.dart`, which keeps
+# both in step. The release APK is named after it: Invoices_4.3.apk.
+version: 4.3.0+43
 
 environment:
   sdk: ^3.11.5
