@@ -940,90 +940,59 @@ class _ItemRow extends StatelessWidget {
   Widget build(BuildContext context) {
     final hasParts = components.isNotEmpty || item.parts.isNotEmpty;
     final hasDescription = description.isNotEmpty;
+
     return Container(
       margin: const EdgeInsets.only(bottom: 8),
       clipBehavior: Clip.antiAlias,
       decoration: BoxDecoration(
         color: AppTheme.surf(context),
-        borderRadius: BorderRadius.circular(8),
+        borderRadius: BorderRadius.circular(10),
+      ),
+      // The border goes over the content: drawn underneath, the tinted
+      // option strip would paint across it at the rounded bottom corners.
+      foregroundDecoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(10),
         border: Border.all(color: AppTheme.borderOf(context)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(12, 10, 8, 10),
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        item.omschrijving,
-                        style: const TextStyle(
-                          fontWeight: FontWeight.w600,
-                          fontSize: 14,
-                        ),
-                      ),
-                      const SizedBox(height: 2),
-                      Text(
-                        '${formatMoney(item.prijsExBtw, currency: currency)} ex. BTW → '
-                        '${formatMoney(item.prijsInclBtw(taxRate), currency: currency)} incl.',
-                        style: const TextStyle(
-                          color: AppTheme.textSecondary,
-                          fontSize: 11,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              Column(
+          // One row: name and unit price | quantity | total | edit, delete.
+          InkWell(
+            onTap: onEdit,
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(12, 10, 4, 10),
+              child: Row(
                 children: [
-                  // A range is set in the item form — stepping one bound of it
-                  // here would silently change what was estimated.
-                  if (item.isRange)
-                    Padding(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 8,
-                        vertical: 2,
-                      ),
-                      child: Text(
-                        item.aantalLabel,
-                        style: const TextStyle(
-                          fontWeight: FontWeight.w600,
-                          fontSize: 14,
-                        ),
-                      ),
-                    )
-                  else
-                    Row(
-                      mainAxisSize: MainAxisSize.min,
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        _QtyBtn(
-                          icon: Icons.remove,
-                          onTap: item.aantal > 1
-                              ? () => onQtyChanged(item.aantal - 1)
-                              : null,
-                        ),
-                        SizedBox(
-                          width: 32,
-                          child: Text(
-                            item.aantalLabel,
-                            textAlign: TextAlign.center,
-                            style: const TextStyle(
-                              fontWeight: FontWeight.w600,
-                              fontSize: 14,
-                            ),
+                        Text(
+                          item.omschrijving,
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            fontWeight: FontWeight.w700,
+                            fontSize: 14,
+                            height: 1.25,
+                            color: AppTheme.onSurface(context),
                           ),
                         ),
-                        _QtyBtn(
-                          icon: Icons.add,
-                          onTap: () => onQtyChanged(item.aantal + 1),
+                        const SizedBox(height: 2),
+                        Text(
+                          '${formatMoney(item.prijsExBtw, currency: currency)} ex. BTW',
+                          style: const TextStyle(
+                            color: AppTheme.textSecondary,
+                            fontSize: 11,
+                          ),
                         ),
                       ],
                     ),
+                  ),
+                  const SizedBox(width: 8),
+                  _QtyPill(item: item, onChanged: onQtyChanged),
+                  const SizedBox(width: 10),
                   Text(
                     formatAmountRange(
                       item.totalInclBtw(taxRate),
@@ -1033,144 +1002,160 @@ class _ItemRow extends StatelessWidget {
                     style: const TextStyle(
                       fontWeight: FontWeight.w700,
                       color: AppTheme.primary,
-                      fontSize: 13,
+                      fontSize: 14,
                     ),
                   ),
-                ],
-              ),
-              const SizedBox(width: 4),
-              Column(
-                children: [
-                  GestureDetector(
+                  const SizedBox(width: 2),
+                  _CardIcon(
+                    icon: Icons.edit_outlined,
+                    color: AppTheme.onSurfaceVariant(context),
                     onTap: onEdit,
-                    child: const Padding(
-                      padding: EdgeInsets.all(4),
-                      child: Icon(
-                        Icons.edit_outlined,
-                        size: 18,
-                        color: AppTheme.textSecondary,
-                      ),
-                    ),
                   ),
-                  GestureDetector(
+                  _CardIcon(
+                    icon: Icons.delete_outline,
+                    color: AppTheme.error,
                     onTap: onDelete,
-                    child: const Padding(
-                      padding: EdgeInsets.all(4),
-                      child: Icon(
-                        Icons.delete_outline,
-                        size: 18,
-                        color: AppTheme.error,
-                      ),
-                    ),
                   ),
                 ],
               ),
-              ],
             ),
           ),
 
-          // Per-line options, kept apart from the figures above.
-          if (hasDescription || hasParts) ...[
-            Divider(height: 1, color: AppTheme.borderOf(context)),
-            if (hasDescription)
-              _DescriptionToggle(
-                description: description,
-                value: item.toonBeschrijving,
-                onChanged: onToggleDescription,
+          // Per-line options on a tinted strip under the figures.
+          if (hasDescription || hasParts)
+            Container(
+              decoration: BoxDecoration(
+                color: AppTheme.bg(context),
+                border: Border(
+                  top: BorderSide(color: AppTheme.borderOf(context)),
+                ),
               ),
-            if (hasParts)
-              InkWell(
-                onTap: onEditParts,
-                child: Padding(
-                  padding: const EdgeInsets.fromLTRB(12, 8, 12, 8),
-                  child: Row(
-                    children: [
-                      const Icon(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  if (hasDescription)
+                    _CardOption(
+                      onTap: () => onToggleDescription(!item.toonBeschrijving),
+                      leading: Checkbox(
+                        value: item.toonBeschrijving,
+                        onChanged: (v) => onToggleDescription(v ?? false),
+                        visualDensity:
+                            const VisualDensity(horizontal: -4, vertical: -4),
+                        materialTapTargetSize:
+                            MaterialTapTargetSize.shrinkWrap,
+                      ),
+                      label: 'Omschrijving op factuur',
+                      labelColor: AppTheme.onSurface(context),
+                      detail: description,
+                    ),
+                  if (hasParts)
+                    _CardOption(
+                      onTap: onEditParts,
+                      leading: const Icon(
                         Icons.account_tree_outlined,
                         size: 18,
                         color: AppTheme.primary,
                       ),
-                      const SizedBox(width: 10),
-                      Expanded(
-                        child: Text(
-                          item.parts.isEmpty
-                              ? 'Onderdelen kiezen'
-                              : item.parts
-                                  .map((p) =>
-                                      '${formatStock(p.aantal)}× ${p.naam}')
-                                  .join(', '),
-                          style: const TextStyle(
-                            color: AppTheme.primary,
-                            fontSize: 12,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
+                      label: item.parts.isEmpty
+                          ? 'Onderdelen kiezen'
+                          : 'Onderdelen',
+                      detail: item.parts
+                          .map((p) => '${formatStock(p.aantal)}× ${p.naam}')
+                          .join(', '),
+                    ),
+                ],
               ),
-          ],
+            ),
         ],
       ),
     );
   }
 }
 
-/// "Omschrijving op factuur" with the description itself beneath, so the
-/// choice is made seeing what would be printed. Dimmed while off.
-class _DescriptionToggle extends StatelessWidget {
-  final String description;
-  final bool value;
-  final ValueChanged<bool> onChanged;
+/// The edit / delete buttons at the end of an item card.
+class _CardIcon extends StatelessWidget {
+  final IconData icon;
+  final Color color;
+  final VoidCallback onTap;
 
-  const _DescriptionToggle({
-    required this.description,
-    required this.value,
-    required this.onChanged,
+  const _CardIcon({
+    required this.icon,
+    required this.color,
+    required this.onTap,
   });
 
   @override
   Widget build(BuildContext context) {
     return InkWell(
-      onTap: () => onChanged(!value),
+      onTap: onTap,
+      customBorder: const CircleBorder(),
       child: Padding(
-        padding: const EdgeInsets.fromLTRB(4, 2, 12, 6),
+        padding: const EdgeInsets.all(5),
+        child: Icon(icon, size: 19, color: color),
+      ),
+    );
+  }
+}
+
+/// A line on an item card's option strip: [leading] marker, a blue [label]
+/// and — after a dot — [detail], cut to the one line.
+class _CardOption extends StatelessWidget {
+  final Widget leading;
+  final String label;
+
+  /// Defaults to the primary blue, for a label that reads as an action.
+  final Color? labelColor;
+  final String detail;
+  final VoidCallback onTap;
+
+  const _CardOption({
+    required this.leading,
+    required this.label,
+    this.labelColor,
+    required this.detail,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      onTap: onTap,
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(12, 7, 12, 7),
         child: Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Checkbox(
-              value: value,
-              onChanged: (v) => onChanged(v ?? false),
-              visualDensity: VisualDensity.compact,
-              materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-            ),
+            SizedBox(width: 18, height: 18, child: Center(child: leading)),
+            const SizedBox(width: 10),
             Expanded(
-              child: Padding(
-                padding: const EdgeInsets.only(top: 8),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
+              child: Text.rich(
+                TextSpan(
                   children: [
-                    Text(
-                      'Omschrijving op factuur',
+                    TextSpan(
+                      text: label,
                       style: TextStyle(
-                        fontSize: 12,
-                        fontWeight: FontWeight.w600,
-                        color: value ? AppTheme.primary : AppTheme.textSecondary,
+                        color: labelColor ?? AppTheme.primary,
+                        fontWeight: FontWeight.w500,
                       ),
                     ),
-                    const SizedBox(height: 2),
-                    Text(
-                      description,
-                      maxLines: value ? null : 2,
-                      overflow:
-                          value ? TextOverflow.visible : TextOverflow.ellipsis,
-                      style: TextStyle(
-                        fontSize: 12,
-                        color: AppTheme.textSecondary.withAlpha(value ? 255 : 150),
+                    if (detail.isNotEmpty) ...[
+                      TextSpan(
+                        text: '  ·  ',
+                        style: TextStyle(
+                          color: AppTheme.textSecondary.withAlpha(120),
+                        ),
                       ),
-                    ),
+                      TextSpan(
+                        text: detail,
+                        style: TextStyle(
+                          color: AppTheme.onSurfaceVariant(context),
+                        ),
+                      ),
+                    ],
                   ],
                 ),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(fontSize: 12),
               ),
             ),
           ],
@@ -1180,28 +1165,86 @@ class _DescriptionToggle extends StatelessWidget {
   }
 }
 
-class _QtyBtn extends StatelessWidget {
-  final IconData icon;
-  final VoidCallback? onTap;
+/// Quantity in a rounded pill: − n +. A range is set in the item form —
+/// stepping one bound of it here would silently change what was estimated —
+/// so a ranged line shows just its "1-4".
+class _QtyPill extends StatelessWidget {
+  final InvoiceItem item;
+  final ValueChanged<double> onChanged;
 
-  const _QtyBtn({required this.icon, this.onTap});
+  const _QtyPill({required this.item, required this.onChanged});
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
+    final label = Text(
+      item.aantalLabel,
+      textAlign: TextAlign.center,
+      style: TextStyle(
+        fontWeight: FontWeight.w600,
+        fontSize: 14,
+        color: AppTheme.onSurface(context),
+      ),
+    );
+    return Container(
+      padding: const EdgeInsets.all(2),
+      decoration: BoxDecoration(
+        color: AppTheme.borderOf(context).withAlpha(130),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: item.isRange
+          ? Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+              child: label,
+            )
+          : Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                _QtyBtn(
+                  icon: Icons.remove,
+                  onTap: item.aantal > 1
+                      ? () => onChanged(item.aantal - 1)
+                      : null,
+                ),
+                SizedBox(width: 24, child: label),
+                _QtyBtn(
+                  icon: Icons.add,
+                  filled: true,
+                  onTap: () => onChanged(item.aantal + 1),
+                ),
+              ],
+            ),
+    );
+  }
+}
+
+class _QtyBtn extends StatelessWidget {
+  final IconData icon;
+  final bool filled;
+  final VoidCallback? onTap;
+
+  const _QtyBtn({required this.icon, this.filled = false, this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    final enabled = onTap != null;
+    return InkWell(
       onTap: onTap,
+      borderRadius: BorderRadius.circular(6),
       child: Container(
-        padding: const EdgeInsets.all(4),
+        width: 26,
+        height: 26,
         decoration: BoxDecoration(
-          color: onTap != null
-              ? AppTheme.primary.withAlpha(20)
-              : AppTheme.border.withAlpha(80),
-          borderRadius: BorderRadius.circular(4),
+          color: filled && enabled ? AppTheme.primary.withAlpha(30) : null,
+          borderRadius: BorderRadius.circular(6),
         ),
         child: Icon(
           icon,
-          size: 14,
-          color: onTap != null ? AppTheme.primary : AppTheme.textSecondary,
+          size: 16,
+          color: !enabled
+              ? AppTheme.textSecondary.withAlpha(110)
+              : filled
+                  ? AppTheme.primary
+                  : AppTheme.onSurfaceVariant(context),
         ),
       ),
     );
