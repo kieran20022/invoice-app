@@ -171,6 +171,7 @@ class InvoiceProvider extends ChangeNotifier {
 
   InvoiceItem createItem({
     String? omschrijving,
+    String beschrijving = '',
     double aantal = 1,
     double? aantalTot,
     double prijsExBtw = 0,
@@ -180,6 +181,7 @@ class InvoiceProvider extends ChangeNotifier {
       InvoiceItem(
         id: _uuid.v4(),
         omschrijving: omschrijving ?? '',
+        beschrijving: beschrijving,
         aantal: aantal,
         aantalTot: aantalTot,
         prijsExBtw: prijsExBtw,

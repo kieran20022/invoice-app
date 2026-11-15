@@ -818,6 +818,14 @@ class _ItemsStep extends StatelessWidget {
               currency: currency,
               taxRate: taxRate,
               components: _componentsFor(item, products),
+              description: _descriptionFor(item, products),
+              onToggleDescription: (show) =>
+                  context.read<InvoiceProvider>().updateDraftItem(
+                        item.copyWith(
+                          toonBeschrijving: show,
+                          beschrijving: _descriptionFor(item, products),
+                        ),
+                      ),
               onEdit: () => onEditItem(item),
               onEditParts: () => _editParts(context, item, products),
               onDelete: () =>
@@ -873,6 +881,15 @@ List<Product> _componentsFor(InvoiceItem item, List<Product> products) {
   return product == null ? const [] : componentsOf(product, products);
 }
 
+/// The description [item] can print: the one copied onto the line, or —
+/// for a line added before descriptions were copied — its product's current
+/// one. Empty for a hand-typed line.
+String _descriptionFor(InvoiceItem item, List<Product> products) {
+  if (item.beschrijving.isNotEmpty) return item.beschrijving;
+  final product = products.where((p) => p.id == item.productId).firstOrNull;
+  return product?.description.trim() ?? '';
+}
+
 Future<void> _editParts(
   BuildContext context,
   InvoiceItem item,
@@ -896,6 +913,11 @@ class _ItemRow extends StatelessWidget {
   /// What the line's product can be made of — the parts can be picked when
   /// this is not empty (or when the line already records some).
   final List<Product> components;
+
+  /// The description the line can print under its name; the tick box for it
+  /// only appears when there is one.
+  final String description;
+  final ValueChanged<bool> onToggleDescription;
   final VoidCallback onEdit;
   final VoidCallback onEditParts;
   final VoidCallback onDelete;
@@ -906,6 +928,8 @@ class _ItemRow extends StatelessWidget {
     required this.currency,
     required this.taxRate,
     required this.components,
+    required this.description,
+    required this.onToggleDescription,
     required this.onEdit,
     required this.onEditParts,
     required this.onDelete,
@@ -914,160 +938,243 @@ class _ItemRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final hasParts = components.isNotEmpty || item.parts.isNotEmpty;
+    final hasDescription = description.isNotEmpty;
     return Container(
       margin: const EdgeInsets.only(bottom: 8),
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      clipBehavior: Clip.antiAlias,
       decoration: BoxDecoration(
         color: AppTheme.surf(context),
         borderRadius: BorderRadius.circular(8),
         border: Border.all(color: AppTheme.borderOf(context)),
       ),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Expanded(
-            child: Column(
+          Padding(
+            padding: const EdgeInsets.fromLTRB(12, 10, 8, 10),
+            child: Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  item.omschrijving,
-                  style: const TextStyle(
-                    fontWeight: FontWeight.w600,
-                    fontSize: 14,
-                  ),
-                ),
-                const SizedBox(height: 2),
-                Text(
-                  '${formatMoney(item.prijsExBtw, currency: currency)} ex. BTW → '
-                  '${formatMoney(item.prijsInclBtw(taxRate), currency: currency)} incl.',
-                  style: const TextStyle(
-                    color: AppTheme.textSecondary,
-                    fontSize: 11,
-                  ),
-                ),
-                if (components.isNotEmpty || item.parts.isNotEmpty)
-                  InkWell(
-                    onTap: onEditParts,
-                    child: Padding(
-                      padding: const EdgeInsets.only(top: 4),
-                      child: Row(
-                        children: [
-                          const Icon(
-                            Icons.account_tree_outlined,
-                            size: 14,
-                            color: AppTheme.primary,
-                          ),
-                          const SizedBox(width: 4),
-                          Expanded(
-                            child: Text(
-                              item.parts.isEmpty
-                                  ? 'Onderdelen kiezen'
-                                  : item.parts
-                                      .map((p) =>
-                                          '${formatStock(p.aantal)}× ${p.naam}')
-                                      .join(', '),
-                              style: const TextStyle(
-                                color: AppTheme.primary,
-                                fontSize: 12,
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-              ],
-            ),
-          ),
-
-          Column(
-            children: [
-              // A range is set in the item form — stepping one bound of it
-              // here would silently change what was estimated.
-              if (item.isRange)
-                Padding(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 8,
-                    vertical: 2,
-                  ),
-                  child: Text(
-                    item.aantalLabel,
-                    style: const TextStyle(
-                      fontWeight: FontWeight.w600,
-                      fontSize: 14,
-                    ),
-                  ),
-                )
-              else
-                Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    _QtyBtn(
-                      icon: Icons.remove,
-                      onTap: item.aantal > 1
-                          ? () => onQtyChanged(item.aantal - 1)
-                          : null,
-                    ),
-                    SizedBox(
-                      width: 32,
-                      child: Text(
-                        item.aantalLabel,
-                        textAlign: TextAlign.center,
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        item.omschrijving,
                         style: const TextStyle(
                           fontWeight: FontWeight.w600,
                           fontSize: 14,
                         ),
                       ),
+                      const SizedBox(height: 2),
+                      Text(
+                        '${formatMoney(item.prijsExBtw, currency: currency)} ex. BTW → '
+                        '${formatMoney(item.prijsInclBtw(taxRate), currency: currency)} incl.',
+                        style: const TextStyle(
+                          color: AppTheme.textSecondary,
+                          fontSize: 11,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              Column(
+                children: [
+                  // A range is set in the item form — stepping one bound of it
+                  // here would silently change what was estimated.
+                  if (item.isRange)
+                    Padding(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 8,
+                        vertical: 2,
+                      ),
+                      child: Text(
+                        item.aantalLabel,
+                        style: const TextStyle(
+                          fontWeight: FontWeight.w600,
+                          fontSize: 14,
+                        ),
+                      ),
+                    )
+                  else
+                    Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        _QtyBtn(
+                          icon: Icons.remove,
+                          onTap: item.aantal > 1
+                              ? () => onQtyChanged(item.aantal - 1)
+                              : null,
+                        ),
+                        SizedBox(
+                          width: 32,
+                          child: Text(
+                            item.aantalLabel,
+                            textAlign: TextAlign.center,
+                            style: const TextStyle(
+                              fontWeight: FontWeight.w600,
+                              fontSize: 14,
+                            ),
+                          ),
+                        ),
+                        _QtyBtn(
+                          icon: Icons.add,
+                          onTap: () => onQtyChanged(item.aantal + 1),
+                        ),
+                      ],
                     ),
-                    _QtyBtn(
-                      icon: Icons.add,
-                      onTap: () => onQtyChanged(item.aantal + 1),
+                  Text(
+                    formatAmountRange(
+                      item.totalInclBtw(taxRate),
+                      item.totalInclBtwMax(taxRate),
+                      currency,
+                    ),
+                    style: const TextStyle(
+                      fontWeight: FontWeight.w700,
+                      color: AppTheme.primary,
+                      fontSize: 13,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(width: 4),
+              Column(
+                children: [
+                  GestureDetector(
+                    onTap: onEdit,
+                    child: const Padding(
+                      padding: EdgeInsets.all(4),
+                      child: Icon(
+                        Icons.edit_outlined,
+                        size: 18,
+                        color: AppTheme.textSecondary,
+                      ),
+                    ),
+                  ),
+                  GestureDetector(
+                    onTap: onDelete,
+                    child: const Padding(
+                      padding: EdgeInsets.all(4),
+                      child: Icon(
+                        Icons.delete_outline,
+                        size: 18,
+                        color: AppTheme.error,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              ],
+            ),
+          ),
+
+          // Per-line options, kept apart from the figures above.
+          if (hasDescription || hasParts) ...[
+            Divider(height: 1, color: AppTheme.borderOf(context)),
+            if (hasDescription)
+              _DescriptionToggle(
+                description: description,
+                value: item.toonBeschrijving,
+                onChanged: onToggleDescription,
+              ),
+            if (hasParts)
+              InkWell(
+                onTap: onEditParts,
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(12, 8, 12, 8),
+                  child: Row(
+                    children: [
+                      const Icon(
+                        Icons.account_tree_outlined,
+                        size: 18,
+                        color: AppTheme.primary,
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Text(
+                          item.parts.isEmpty
+                              ? 'Onderdelen kiezen'
+                              : item.parts
+                                  .map((p) =>
+                                      '${formatStock(p.aantal)}× ${p.naam}')
+                                  .join(', '),
+                          style: const TextStyle(
+                            color: AppTheme.primary,
+                            fontSize: 12,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+/// "Omschrijving op factuur" with the description itself beneath, so the
+/// choice is made seeing what would be printed. Dimmed while off.
+class _DescriptionToggle extends StatelessWidget {
+  final String description;
+  final bool value;
+  final ValueChanged<bool> onChanged;
+
+  const _DescriptionToggle({
+    required this.description,
+    required this.value,
+    required this.onChanged,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      onTap: () => onChanged(!value),
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(4, 2, 12, 6),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Checkbox(
+              value: value,
+              onChanged: (v) => onChanged(v ?? false),
+              visualDensity: VisualDensity.compact,
+              materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+            ),
+            Expanded(
+              child: Padding(
+                padding: const EdgeInsets.only(top: 8),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Omschrijving op factuur',
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                        color: value ? AppTheme.primary : AppTheme.textSecondary,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      description,
+                      maxLines: value ? null : 2,
+                      overflow:
+                          value ? TextOverflow.visible : TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: AppTheme.textSecondary.withAlpha(value ? 255 : 150),
+                      ),
                     ),
                   ],
                 ),
-              Text(
-                formatAmountRange(
-                  item.totalInclBtw(taxRate),
-                  item.totalInclBtwMax(taxRate),
-                  currency,
-                ),
-                style: const TextStyle(
-                  fontWeight: FontWeight.w700,
-                  color: AppTheme.primary,
-                  fontSize: 13,
-                ),
               ),
-            ],
-          ),
-
-          const SizedBox(width: 4),
-          Column(
-            children: [
-              GestureDetector(
-                onTap: onEdit,
-                child: const Padding(
-                  padding: EdgeInsets.all(4),
-                  child: Icon(
-                    Icons.edit_outlined,
-                    size: 18,
-                    color: AppTheme.textSecondary,
-                  ),
-                ),
-              ),
-              GestureDetector(
-                onTap: onDelete,
-                child: const Padding(
-                  padding: EdgeInsets.all(4),
-                  child: Icon(
-                    Icons.delete_outline,
-                    size: 18,
-                    color: AppTheme.error,
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ],
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -1242,6 +1349,7 @@ class _ProductPickerScreenState extends State<ProductPickerScreen> {
     provider.addDraftItem(
       provider.createItem(
         omschrijving: p.name,
+        beschrijving: p.description,
         aantal: 1,
         prijsExBtw: p.price,
         productId: p.id,

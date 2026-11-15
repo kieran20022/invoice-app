@@ -13,7 +13,10 @@ Invoice app. Used for generating invoices for clients. Simple interface where us
 7. Invoice history: List of all invoices with search, filter by status (draft/paid/quotes), and revenue stats. A card is swiped right and up for Contant Betaald, right and down for Pin Betaald, and left to delete. Long-pressing a card starts a selection; the bar that
    replaces the search field shares or downloads the selected PDFs, marks them
    Contant/Pin betaald, or deletes them.
-8. Products: Saved product/service list with name, description, price, unit. Organised in categories and optional sub-categories (created when adding a product, or in bulk by long-pressing products in one category and selecting them). Quickly added to invoices. The ⋮ beside the search field
+8. Products: Saved product/service list with name, description, price, unit. Organised in categories and optional sub-categories (created when adding a product, or in bulk by long-pressing products in one category and selecting them). Quickly added to invoices. A line's "Omschrijving op
+   factuur" tick box on the Producten step prints the product's description
+   under its name on the PDF (`InvoiceItem.beschrijving` / `toonBeschrijving`,
+   off by default). The ⋮ beside the search field
    shares or downloads the list as a CSV prijslijst
    (`PriceListService.buildCsv`, `.csv`), written to be read by an AI
    assistant; during a selection the bar's share and

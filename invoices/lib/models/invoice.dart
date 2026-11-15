@@ -32,6 +32,12 @@ class ItemPart {
 class InvoiceItem {
   final String id;
   final String omschrijving;
+
+  /// The product's description, copied when the line was added. It reaches
+  /// the document — under [omschrijving] — only when [toonBeschrijving] is on,
+  /// which is ticked per line on the Producten step.
+  final String beschrijving;
+  final bool toonBeschrijving;
   final double aantal;
 
   /// Upper bound of an estimated quantity ("1-4 uur"). Only quotes set this;
@@ -47,12 +53,17 @@ class InvoiceItem {
   const InvoiceItem({
     required this.id,
     required this.omschrijving,
+    this.beschrijving = '',
+    this.toonBeschrijving = false,
     required this.aantal,
     this.aantalTot,
     required this.prijsExBtw,
     this.productId,
     this.parts = const [],
   });
+
+  /// What the document prints under the name; empty when nothing is.
+  String get printedBeschrijving => toonBeschrijving ? beschrijving : '';
 
   /// A range only counts as one when its upper bound is actually higher.
   bool get isRange => aantalTot != null && aantalTot! > aantal;
@@ -73,6 +84,8 @@ class InvoiceItem {
   Map<String, dynamic> toMap() => {
         'id': id,
         'omschrijving': omschrijving,
+        'beschrijving': beschrijving,
+        'toonBeschrijving': toonBeschrijving,
         'aantal': aantal,
         'aantalTot': aantalTot,
         'prijsExBtw': prijsExBtw,
@@ -83,6 +96,8 @@ class InvoiceItem {
   factory InvoiceItem.fromMap(Map<String, dynamic> map) => InvoiceItem(
         id: map['id'] ?? '',
         omschrijving: map['omschrijving'] ?? map['name'] ?? '',
+        beschrijving: map['beschrijving'] ?? '',
+        toonBeschrijving: map['toonBeschrijving'] == true,
         aantal: (map['aantal'] ?? map['quantity'] ?? 1.0).toDouble(),
         aantalTot: (map['aantalTot'] as num?)?.toDouble(),
         prijsExBtw: (map['prijsExBtw'] ?? map['unitPrice'] ?? 0.0).toDouble(),
@@ -95,6 +110,8 @@ class InvoiceItem {
 
   InvoiceItem copyWith({
     String? omschrijving,
+    String? beschrijving,
+    bool? toonBeschrijving,
     double? aantal,
     double? aantalTot,
     bool clearAantalTot = false,
@@ -104,6 +121,8 @@ class InvoiceItem {
       InvoiceItem(
         id: id,
         omschrijving: omschrijving ?? this.omschrijving,
+        beschrijving: beschrijving ?? this.beschrijving,
+        toonBeschrijving: toonBeschrijving ?? this.toonBeschrijving,
         aantal: aantal ?? this.aantal,
         aantalTot: clearAantalTot ? null : (aantalTot ?? this.aantalTot),
         prijsExBtw: prijsExBtw ?? this.prijsExBtw,

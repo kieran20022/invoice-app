@@ -229,15 +229,33 @@ class PdfService {
               ),
               ...invoice.items.map(
                 (item) => pw.TableRow(
+                  // The name + description cell sets the row's height; the
+                  // figures sit centred beside it.
+                  verticalAlignment: pw.TableCellVerticalAlignment.middle,
                   children: [
                     pw.Padding(
                       padding: const pw.EdgeInsets.symmetric(
                         horizontal: 10,
                         vertical: 8,
                       ),
-                      child: pw.Text(
-                        item.omschrijving,
-                        style: pw.TextStyle(color: _kDark, fontSize: 11),
+                      child: pw.Column(
+                        crossAxisAlignment: pw.CrossAxisAlignment.start,
+                        children: [
+                          pw.Text(
+                            item.omschrijving,
+                            style: pw.TextStyle(color: _kDark, fontSize: 11),
+                          ),
+                          if (item.printedBeschrijving.isNotEmpty) ...[
+                            pw.SizedBox(height: 3),
+                            pw.Text(
+                              item.printedBeschrijving,
+                              style: const pw.TextStyle(
+                                color: _kGrey,
+                                fontSize: 9,
+                              ),
+                            ),
+                          ],
+                        ],
                       ),
                     ),
                     _td(item.aantalLabel, align: pw.TextAlign.center),
