@@ -826,6 +826,8 @@ class _ItemsStep extends StatelessWidget {
                           beschrijving: _descriptionFor(item, products),
                         ),
                       ),
+              onEditDescription: () =>
+                  _editDescription(context, item, products),
               onEdit: () => onEditItem(item),
               onEditParts: () => _editParts(context, item, products),
               onDelete: () =>
@@ -890,6 +892,98 @@ String _descriptionFor(InvoiceItem item, List<Product> products) {
   return product?.description.trim() ?? '';
 }
 
+/// Rewrites the description [item] prints, for this invoice only — the
+/// saved product keeps its own. Saving a text also ticks the line on, since
+/// a description edited for the document is one meant to be printed;
+/// clearing it falls back to the product's description, unticked.
+Future<void> _editDescription(
+  BuildContext context,
+  InvoiceItem item,
+  List<Product> products,
+) async {
+  final provider = context.read<InvoiceProvider>();
+  final edited = await showDialog<String>(
+    context: context,
+    builder: (_) => _DescriptionDialog(
+      title: item.omschrijving,
+      initial: _descriptionFor(item, products),
+    ),
+  );
+  if (edited == null) return;
+  final text = edited.trim();
+  provider.updateDraftItem(
+    item.copyWith(beschrijving: text, toonBeschrijving: text.isNotEmpty),
+  );
+}
+
+class _DescriptionDialog extends StatefulWidget {
+  final String title;
+  final String initial;
+
+  const _DescriptionDialog({required this.title, required this.initial});
+
+  @override
+  State<_DescriptionDialog> createState() => _DescriptionDialogState();
+}
+
+class _DescriptionDialogState extends State<_DescriptionDialog> {
+  late final TextEditingController _controller =
+      TextEditingController(text: widget.initial);
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('Omschrijving bewerken'),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            widget.title,
+            style: const TextStyle(
+              color: AppTheme.textSecondary,
+              fontSize: 12,
+            ),
+          ),
+          const SizedBox(height: 4),
+          const Text(
+            'Alleen voor deze factuur — het product blijft ongewijzigd.',
+            style: TextStyle(color: AppTheme.textSecondary, fontSize: 12),
+          ),
+          const SizedBox(height: 12),
+          TextField(
+            controller: _controller,
+            autofocus: true,
+            minLines: 2,
+            maxLines: 6,
+            textCapitalization: TextCapitalization.sentences,
+            decoration: const InputDecoration(
+              labelText: 'Omschrijving',
+              border: OutlineInputBorder(),
+            ),
+          ),
+        ],
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: const Text('Annuleren'),
+        ),
+        FilledButton(
+          onPressed: () => Navigator.pop(context, _controller.text),
+          child: const Text('Opslaan'),
+        ),
+      ],
+    );
+  }
+}
+
 Future<void> _editParts(
   BuildContext context,
   InvoiceItem item,
@@ -918,6 +1012,7 @@ class _ItemRow extends StatelessWidget {
   /// only appears when there is one.
   final String description;
   final ValueChanged<bool> onToggleDescription;
+  final VoidCallback onEditDescription;
   final VoidCallback onEdit;
   final VoidCallback onEditParts;
   final VoidCallback onDelete;
@@ -930,6 +1025,7 @@ class _ItemRow extends StatelessWidget {
     required this.components,
     required this.description,
     required this.onToggleDescription,
+    required this.onEditDescription,
     required this.onEdit,
     required this.onEditParts,
     required this.onDelete,
@@ -1047,6 +1143,11 @@ class _ItemRow extends StatelessWidget {
                       label: 'Omschrijving op factuur',
                       labelColor: AppTheme.onSurface(context),
                       detail: description,
+                      trailing: _CardIcon(
+                        icon: Icons.edit_outlined,
+                        color: AppTheme.onSurfaceVariant(context),
+                        onTap: onEditDescription,
+                      ),
                     ),
                   if (hasParts)
                     _CardOption(
@@ -1108,12 +1209,16 @@ class _CardOption extends StatelessWidget {
   final String detail;
   final VoidCallback onTap;
 
+  /// An optional button at the end of the line, e.g. to edit [detail].
+  final Widget? trailing;
+
   const _CardOption({
     required this.leading,
     required this.label,
     this.labelColor,
     required this.detail,
     required this.onTap,
+    this.trailing,
   });
 
   @override
@@ -1158,6 +1263,10 @@ class _CardOption extends StatelessWidget {
                 style: const TextStyle(fontSize: 12),
               ),
             ),
+            if (trailing != null) ...[
+              const SizedBox(width: 6),
+              trailing!,
+            ],
           ],
         ),
       ),
